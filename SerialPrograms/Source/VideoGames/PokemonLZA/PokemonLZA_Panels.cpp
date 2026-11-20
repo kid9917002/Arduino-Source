@@ -20,6 +20,7 @@
 #include "Programs/NonShinyHunting/PokemonLZA_WeatherFinder.h"
 #include "Programs/Farming/PokemonLZA_HyperspaceRewardReset.h"
 #include "Programs/Farming/PokemonLZA_DonutMaker.h"
+#include "Programs/PokemonLZA_AutoStory.h"
 
 //  Trading
 
@@ -83,6 +84,7 @@ std::vector<PanelEntry> PanelListFactory::make_panels() const{
     ret.emplace_back(make_SingleSwitchProgram<WeatherFinder>());
     ret.emplace_back(make_SingleSwitchProgram<HyperspaceRewardReset>());
     ret.emplace_back(make_SingleSwitchProgram<DonutMaker>());
+    ret.emplace_back(make_SingleSwitchProgram<AutoStory>());
     if (IS_BETA_VERSION){
     }
 

@@ -2207,6 +2207,8 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_DayNightStateDetector.cpp
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_DayNightStateDetector.h
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.cpp
+    Source/VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.cpp
+    Source/VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_HyperspaceCalorieDetector.cpp
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_HyperspaceCalorieDetector.h
@@ -2258,6 +2260,8 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_StatsReset.h
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_WeatherFinder.cpp
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_WeatherFinder.h
+    Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStory.cpp
+    Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStory.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_BasicNavigation.cpp
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_BasicNavigation.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_BoxSorter.cpp
