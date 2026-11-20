@@ -21,7 +21,6 @@
 #include "Pokemon/Pokemon_Strings.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h"
-#include "VideoGames/PokemonLZA/Inference/Battles/PokemonLZA_RunFromBattleDetector.h"
 #include "VideoGames/PokemonLZA/Programs/PokemonLZA_TrainerBattle.h"
 #include "PokemonLZA_AutoStory.h"
 
@@ -289,10 +288,14 @@ void AutoStory::run_first_battle(SingleSwitchProgramEnvironment& env, ProControl
     env.log("Starting first battle.");
     env.console.overlay().add_log("First Battle");
 
+    //  The story battles have no "- Run" prompt, so RunFromBattleWatcher
+    //  cannot be used to tell that we are in battle. Instead, every loop
+    //  holds ZL and looks for the move palette. Seeing move symbols means
+    //  we are in battle.
     TrainerBattleState battle_state(BATTLE_AI);
 
     WallClock start = current_time();
-    WallClock last_battle_seen = start;
+    WallClock last_attack = start;
     bool seen_battle = false;
 
     while (true){
@@ -308,67 +311,51 @@ void AutoStory::run_first_battle(SingleSwitchProgramEnvironment& env, ProControl
             );
         }
 
-        RunFromBattleWatcher in_battle(COLOR_GREEN, &env.console.overlay(), 10ms);
-        FlatWhiteDialogWatcher dialog(COLOR_RED, &env.console.overlay(), 500ms);
-
-        int ret = wait_until(
-            env.console, context,
-            2000ms,
-            {
-                in_battle,
-                dialog,
-            }
-        );
-
-        switch (ret){
-        case 0:
-            //  In battle: lock on with ZL and use the best move.
+        if (battle_state.attempt_one_attack(env, env.console, context)){
             if (!seen_battle){
                 env.log("Battle started.", COLOR_BLUE);
                 env.console.overlay().add_log("Battle Started");
             }
             seen_battle = true;
-            last_battle_seen = current_time();
-            if (battle_state.attempt_one_attack(env, env.console, context)){
-                stats.attacks++;
-                env.update_stats();
-            }else{
-                //  Could not read the move palette. This also happens when
-                //  the battle tutorial window is covering the screen, which
-                //  is closed with A.
-                pbf_press_button(context, BUTTON_A, 160ms, 240ms);
-            }
+            last_attack = current_time();
+            stats.attacks++;
+            env.update_stats();
             continue;
+        }
 
-        case 1:
-            if (seen_battle){
-                //  Post-battle dialog. Leave it on screen and stop.
-                env.log("Post-battle dialog detected. Battle won.", COLOR_BLUE);
-                env.console.overlay().add_log("Battle Finished");
-                return;
-            }
-            env.log("White dialog before battle. Pressing A.");
+        //  No move palette. Either we are not in battle yet, the battle is
+        //  over, or something is covering the screen.
+        context.wait_for_all_requests();
+        FlatWhiteDialogWatcher dialog(COLOR_RED, &env.console.overlay(), 500ms);
+        int ret = wait_until(
+            env.console, context,
+            1000ms,
+            {dialog}
+        );
+
+        if (ret == 0 && seen_battle){
+            //  Post-battle dialog. Leave it on screen and stop.
+            env.log("Post-battle dialog detected. Battle won.", COLOR_BLUE);
+            env.console.overlay().add_log("Battle Finished");
+            return;
+        }
+
+        if (!seen_battle){
+            //  Pre-battle transparent dialog ("... wants to battle!") and
+            //  the first-battle tutorial window: both advance with A.
+            env.log("Waiting for battle. Pressing A.");
             pbf_press_button(context, BUTTON_A, 160ms, 240ms);
             continue;
+        }
 
-        default:
-            if (!seen_battle){
-                //  Pre-battle transparent dialog ("... wants to battle!") and
-                //  the first-battle tutorial window: both advance with A.
-                env.log("Waiting for battle. Pressing A.");
-                pbf_press_button(context, BUTTON_A, 160ms, 240ms);
-                continue;
-            }
-            //  Between the final hit and the post-battle dialog there is a
-            //  FINISH animation. Do not press anything here or we could skip
-            //  past the dialog we want to stop on. Only nudge with A if nothing
-            //  has been recognized for a long time.
-            if (current_time() - last_battle_seen > std::chrono::seconds(30)){
-                env.log("No battle state or dialog for 30 seconds. Pressing A.", COLOR_RED);
-                pbf_press_button(context, BUTTON_A, 160ms, 240ms);
-                last_battle_seen = current_time();
-            }
-            continue;
+        //  Between the final hit and the post-battle dialog there is a
+        //  FINISH animation. Do not press A here or we could skip past the
+        //  dialog we want to stop on. Only nudge with A if nothing has been
+        //  recognized for a long time.
+        if (current_time() - last_attack > std::chrono::seconds(30)){
+            env.log("No move palette or dialog for 30 seconds. Pressing A.", COLOR_RED);
+            pbf_press_button(context, BUTTON_A, 160ms, 240ms);
+            last_attack = current_time();
         }
     }
 }
