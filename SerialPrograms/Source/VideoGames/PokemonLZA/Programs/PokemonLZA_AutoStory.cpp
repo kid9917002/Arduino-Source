@@ -63,7 +63,7 @@ const char* MACRO_HOTEL_MORNING     = "ZA-05-8-Z飯店-隔天早上起床後出�
 const char* MACRO_ROLL_TUTORIAL     = "ZA-05-9-Z飯店-翻滾教學.json";
 const char* MACRO_ROLL_TO_DOOR      = "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json";
 const char* MACRO_LEAVE_HOTEL       = "ZA-05-11-Z飯店-出ZA飯店.json";
-const char* MACRO_WALK_TO_GAI       = "ZA-06-1-走向蓋伊對戰.json";
+const char* MACRO_WALK_TO_URBAIN    = "ZA-06-1-走向蓋伊對戰.json";
 
 }
 
@@ -75,7 +75,7 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         STRING_POKEMON + " LZA", "Auto Story",
         "",
         "Play the opening of the story from a new save: create the character, "
-        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, and win the battle against Gai.",
+        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, and win the battle against Urbain.",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -134,8 +134,8 @@ AutoStory::AutoStory()
             {StartPoint::HotelNight,      "hotel-night",      "ZA-05-7 Night scene"},
             {StartPoint::HotelMorning,    "hotel-morning",    "ZA-05-8 Next morning"},
             {StartPoint::RollTutorial,    "roll-tutorial",    "ZA-05-9 Roll tutorial / leave hotel"},
-            {StartPoint::WalkToGai,       "walk-to-gai",      "ZA-06-1 Walk to Gai"},
-            {StartPoint::GaiBattle,       "gai-battle",       "ZA-06-2 Gai battle (pre-battle screen)"},
+            {StartPoint::WalkToUrbain,    "walk-to-urbain",   "ZA-06-1 Walk to Urbain (蓋伊)"},
+            {StartPoint::UrbainBattle,    "urbain-battle",    "ZA-06-2 Urbain (蓋伊) battle (pre-battle screen)"},
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
@@ -539,14 +539,14 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         run_macro(env, context, MACRO_LEAVE_HOTEL);
     }
 
-    //  ZA-06: Gai.
-    if (start <= StartPoint::WalkToGai){
-        run_macro(env, context, MACRO_WALK_TO_GAI);
+    //  ZA-06: Urbain.
+    if (start <= StartPoint::WalkToUrbain){
+        run_macro(env, context, MACRO_WALK_TO_URBAIN);
     }
 
-    //  ZA-06: Gai battle. Stops on the post-battle dialog.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Gai battle.");
-    run_trainer_battle(env, context, "Gai Battle");
+    //  ZA-06: Urbain battle. Stops on the post-battle dialog.
+    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Urbain battle.");
+    run_trainer_battle(env, context, "Urbain Battle");
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
 }
