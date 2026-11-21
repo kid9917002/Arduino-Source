@@ -10,7 +10,9 @@
  *    ZA-04  walk into Hotel Z
  *    ZA-05  Hotel Z story, night, morning, roll tutorial, leave hotel
  *    ZA-06  walk to Urbain, Urbain battle (vision)
- *  Stops on the dialog after the Urbain battle.
+ *    ZA-07 .. ZA-11  map tutorial, rocks, rooftop, PC, Pokedex, Wild Zone 1
+ *    ZA-12  first catch, Bunnelby battle + catch (vision)
+ *  Stops on the dialog after catching Bunnelby ("做得好！").
  *
  *  The button sequences between vision checkpoints are Turbo Macro JSON
  *  files read from a user-selected folder, so routes can be re-recorded
@@ -78,6 +80,13 @@ public:
         RollTutorial,       //  ZA-05-9 .. ZA-05-11
         WalkToUrbain,       //  ZA-06-1
         UrbainBattle,       //  on the pre-battle screen (ZA-06-2-蓋伊戰鬥前)
+        MapTutorial,        //  ZA-07, on the dialog after the Urbain battle
+        RockScene,          //  ZA-08
+        Rooftop,            //  ZA-09
+        PokemonCenterPC,    //  ZA-10
+        WildZone1,          //  ZA-11
+        FirstCatch,         //  ZA-12-1
+        BunnelbyCapture,    //  on the tutorial screen (ZA-12-2-掘掘兔戰鬥捕捉教學前)
     };
 
     enum class Starter{
@@ -104,6 +113,13 @@ private:
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
         const std::string& name
     );
+
+    //  Wild battle tutorial: send out a Pokemon, weaken Bunnelby, then
+    //  throw a ball when told to. Stops on the dialog after the catch.
+    void run_capture_battle(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+
+    //  Hold ZL to lock on and tap ZR to throw a ball.
+    void throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
     std::string starter_macro_filename() const;
 

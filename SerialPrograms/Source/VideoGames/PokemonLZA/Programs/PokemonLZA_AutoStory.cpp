@@ -17,6 +17,7 @@
 #include "CommonTools/Async/InferenceRoutines.h"
 #include "CommonTools/StartupChecks/VideoResolutionCheck.h"
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_PushButtons.h"
+#include "NintendoSwitch/Commands/NintendoSwitch_Commands_Superscalar.h"
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
 #include "Pokemon/Pokemon_Strings.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
@@ -64,6 +65,19 @@ const char* MACRO_ROLL_TUTORIAL     = "ZA-05-9-Z飯店-翻滾教學.json";
 const char* MACRO_ROLL_TO_DOOR      = "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json";
 const char* MACRO_LEAVE_HOTEL       = "ZA-05-11-Z飯店-出ZA飯店.json";
 const char* MACRO_WALK_TO_URBAIN    = "ZA-06-1-走向蓋伊對戰.json";
+const char* MACRO_MAP_TUTORIAL      = "ZA-07-地圖教學.json";
+const char* MACRO_ROCKS_WALK        = "ZA-08-1-往前走觸發岩石劇情.json";
+const char* MACRO_ROCKS_SCENE       = "ZA-08-2-岩石劇情.json";
+const char* MACRO_LADDER            = "ZA-09-1-走向大樓梯子與上梯子.json";
+const char* MACRO_ROOFTOP           = "ZA-09-2-頂樓劇情.json";
+const char* MACRO_JUMP_DOWN         = "ZA-09-3-跳下大樓.json";
+const char* MACRO_PC_SCENE          = "ZA-10-1-往PC前劇情.json";
+const char* MACRO_WALK_TO_PC        = "ZA-10-2-走向PC.json";
+const char* MACRO_POKEDEX_TUTORIAL  = "ZA-10-3-圖鑑教學.json";
+const char* MACRO_WILD_ZONE_1       = "ZA-11-1-走向WildZone1-1.json";
+const char* MACRO_WILD_ZONE_2       = "ZA-11-2-走向WildZone1-2.json";
+const char* MACRO_WILD_ZONE_3       = "ZA-11-3-走向WildZone1-3.json";
+const char* MACRO_FIRST_CATCH       = "ZA-12-1-捕捉1.json";
 
 }
 
@@ -75,7 +89,7 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         STRING_POKEMON + " LZA", "Auto Story",
         "",
         "Play the opening of the story from a new save: create the character, "
-        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, and win the battle against Urbain.",
+        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat Urbain, and catch Bunnelby.",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -136,6 +150,13 @@ AutoStory::AutoStory()
             {StartPoint::RollTutorial,    "roll-tutorial",    "ZA-05-9 Roll tutorial / leave hotel"},
             {StartPoint::WalkToUrbain,    "walk-to-urbain",   "ZA-06-1 Walk to Urbain (蓋伊)"},
             {StartPoint::UrbainBattle,    "urbain-battle",    "ZA-06-2 Urbain (蓋伊) battle (pre-battle screen)"},
+            {StartPoint::MapTutorial,     "map-tutorial",     "ZA-07 Map tutorial (after Urbain battle)"},
+            {StartPoint::RockScene,       "rock-scene",       "ZA-08 Rocks scene"},
+            {StartPoint::Rooftop,         "rooftop",          "ZA-09 Ladder / rooftop / jump down"},
+            {StartPoint::PokemonCenterPC, "pc",               "ZA-10 PC / Pokedex tutorial"},
+            {StartPoint::WildZone1,       "wild-zone-1",      "ZA-11 Walk to Wild Zone 1"},
+            {StartPoint::FirstCatch,      "first-catch",      "ZA-12-1 First catch"},
+            {StartPoint::BunnelbyCapture, "bunnelby",         "ZA-12-2 Bunnelby (掘掘兔) battle + catch (tutorial screen)"},
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
@@ -439,6 +460,152 @@ void AutoStory::run_trainer_battle(
 
 
 
+void AutoStory::throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Throwing a ball.", COLOR_BLUE);
+    env.console.overlay().add_log("Throw Ball");
+    //  Hold ZL for 1.5s to lock on. ZR is tapped while ZL is still held.
+    ssf_press_button(context, BUTTON_ZL, 700ms, 1500ms, 0ms);
+    pbf_press_button(context, BUTTON_ZR, 120ms, 1500ms);
+    context.wait_for_all_requests();
+}
+
+
+
+void AutoStory::run_capture_battle(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    AutoStory_Descriptor::Stats& stats = env.current_stats<AutoStory_Descriptor::Stats>();
+
+    env.log("Starting Bunnelby battle.");
+    env.console.overlay().add_log("Battle: Bunnelby");
+
+    WallClock start = current_time();
+    auto check_timeout = [&](const char* phase){
+        if (current_time() - start > std::chrono::minutes(5)){
+            stats.errors++;
+            env.update_stats();
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                std::string("run_capture_battle(): Took more than 5 minutes. Phase: ") + phase,
+                env.console
+            );
+        }
+    };
+
+
+    //  Phase 1: close the "wild battle" tutorial window (one page per A).
+    {
+        int clear_checks = 0;
+        while (clear_checks < 2){
+            check_timeout("tutorial");
+            context.wait_for_all_requests();
+            TutorialWindowDetector tutorial;
+            if (tutorial.detect(env.console.video().snapshot())){
+                env.log("Tutorial window. Pressing A.");
+                pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+                clear_checks = 0;
+            }else{
+                clear_checks++;
+                context.wait_for(500ms);
+            }
+        }
+    }
+
+
+    //  Phase 2: send out a Pokemon (D-pad Up) and fight until Bunnelby's
+    //  HP is 0. That brings up a white dialog asking us to catch it.
+    {
+        env.log("Sending out Pokemon (D-pad Up).");
+        pbf_press_dpad(context, DPAD_UP, 160ms, 1500ms);
+        WallClock last_send_out = current_time();
+
+        TrainerBattleState battle_state(BATTLE_AI);
+        bool seen_battle = false;
+
+        while (true){
+            check_timeout("battle");
+            context.wait_for_all_requests();
+
+            if (battle_state.attempt_one_attack(env, env.console, context)){
+                seen_battle = true;
+                stats.attacks++;
+                env.update_stats();
+                continue;
+            }
+
+            context.wait_for_all_requests();
+            {
+                TutorialWindowDetector tutorial;
+                if (tutorial.detect(env.console.video().snapshot())){
+                    env.log("Tutorial window. Pressing A.");
+                    pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+                    continue;
+                }
+            }
+
+            FlatWhiteDialogWatcher dialog(COLOR_RED, &env.console.overlay(), 500ms);
+            int ret = wait_until(env.console, context, 1000ms, {dialog});
+            if (ret == 0){
+                env.log("Dialog after battle: catch prompt.", COLOR_BLUE);
+                break;
+            }
+
+            //  No move palette and no dialog. If we never got into battle,
+            //  the Pokemon is probably not out yet. Send it out again.
+            if (!seen_battle && current_time() - last_send_out > std::chrono::seconds(8)){
+                env.log("Not in battle yet. Sending out Pokemon again (D-pad Up).");
+                pbf_press_dpad(context, DPAD_UP, 160ms, 1500ms);
+                last_send_out = current_time();
+            }
+        }
+    }
+
+
+    //  Phase 3: "捕捉機會來了！" / "用ZR來投出精靈球吧！". Press A until the
+    //  dialog is gone.
+    {
+        env.console.overlay().add_log("Catch Prompt");
+        int clear_checks = 0;
+        while (clear_checks < 2){
+            check_timeout("catch prompt");
+            context.wait_for_all_requests();
+            FlatWhiteDialogWatcher dialog(COLOR_RED, &env.console.overlay(), 300ms);
+            int ret = wait_until(env.console, context, 1000ms, {dialog});
+            if (ret == 0){
+                pbf_press_button(context, BUTTON_A, 160ms, 640ms);
+                clear_checks = 0;
+            }else{
+                clear_checks++;
+            }
+        }
+    }
+
+
+    //  Phase 4: throw balls until the post-catch dialog ("做得好！") shows up.
+    while (true){
+        check_timeout("catch");
+        throw_ball(env, context);
+
+        //  Wait for the catch to resolve. A white dialog means it worked.
+        FlatWhiteDialogWatcher dialog(COLOR_RED, &env.console.overlay(), 500ms);
+        int ret = wait_until(env.console, context, 15000ms, {dialog});
+        if (ret == 0){
+            env.log("Dialog after catch. Bunnelby caught.", COLOR_BLUE);
+            env.console.overlay().add_log("Bunnelby Caught");
+            return;
+        }
+
+        context.wait_for_all_requests();
+        TutorialWindowDetector tutorial;
+        if (tutorial.detect(env.console.video().snapshot())){
+            env.log("Tutorial window. Pressing A.");
+            pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+            continue;
+        }
+        env.log("No dialog 15 seconds after throwing. Throwing again.", COLOR_RED);
+    }
+}
+
+
+
 void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
@@ -544,9 +711,48 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         run_macro(env, context, MACRO_WALK_TO_URBAIN);
     }
 
-    //  ZA-06: Urbain battle. Stops on the post-battle dialog.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Urbain battle.");
-    run_trainer_battle(env, context, "Urbain Battle");
+    //  ZA-06: Urbain battle. Ends on the post-battle dialog.
+    if (start <= StartPoint::UrbainBattle){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Urbain battle.");
+        run_trainer_battle(env, context, "Urbain Battle");
+    }
+
+    //  ZA-07 .. ZA-11.
+    if (start <= StartPoint::MapTutorial){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Map tutorial.");
+        run_macro(env, context, MACRO_MAP_TUTORIAL);
+    }
+    if (start <= StartPoint::RockScene){
+        run_macro(env, context, MACRO_ROCKS_WALK);
+        run_macro(env, context, MACRO_ROCKS_SCENE);
+    }
+    if (start <= StartPoint::Rooftop){
+        run_macro(env, context, MACRO_LADDER);
+        run_macro(env, context, MACRO_ROOFTOP);
+        run_macro(env, context, MACRO_JUMP_DOWN);
+    }
+    if (start <= StartPoint::PokemonCenterPC){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "PC / Pokedex.");
+        run_macro(env, context, MACRO_PC_SCENE);
+        run_macro(env, context, MACRO_WALK_TO_PC);
+        run_macro(env, context, MACRO_POKEDEX_TUTORIAL);
+    }
+    if (start <= StartPoint::WildZone1){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Wild Zone 1.");
+        run_macro(env, context, MACRO_WILD_ZONE_1);
+        run_macro(env, context, MACRO_WILD_ZONE_2);
+        run_macro(env, context, MACRO_WILD_ZONE_3);
+    }
+
+    //  ZA-12: catching.
+    if (start <= StartPoint::FirstCatch){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "First catch.");
+        run_macro(env, context, MACRO_FIRST_CATCH);
+    }
+
+    //  ZA-12: Bunnelby battle + catch. Stops on the dialog after the catch.
+    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Bunnelby battle.");
+    run_capture_battle(env, context);
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
 }
