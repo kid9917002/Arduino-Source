@@ -57,6 +57,54 @@ bool TutorialWindowDetector::detect(const ImageViewRGB32& screen){
 
 
 
+namespace{
+
+ImageFloatBox party_slot_hp_bar_box(int index){
+    //  HP bars under the small party icons, measured on 16:9 frames.
+    double center_x = 0.097 + 0.0410 * index;
+    return ImageFloatBox(center_x - 0.010, 0.946, 0.020, 0.012);
+}
+
+}
+
+int read_party_slot_count(const ImageViewRGB32& screen){
+    int count = 0;
+    for (int index = 0; index < 5; index++){
+        ImageViewRGB32 image = extract_box_reference(screen, party_slot_hp_bar_box(index));
+        size_t width = image.width();
+        size_t height = image.height();
+        if (width == 0 || height == 0){
+            continue;
+        }
+        size_t green_pixels = 0;
+        for (size_t y = 0; y < height; y++){
+            for (size_t x = 0; x < width; x++){
+                uint32_t pixel = image.pixel(x, y);
+                int r = (pixel >> 16) & 0xff;
+                int g = (pixel >>  8) & 0xff;
+                int b = (pixel >>  0) & 0xff;
+                if (g >= 150 && g >= r + 40 && g >= b + 40){
+                    green_pixels++;
+                }
+            }
+        }
+        //  Filled slots measure 30%+ green (the bar has a dark outline).
+        //  Empty slots measure 0%.
+        if (green_pixels * 100 >= width * height * 20){
+            count++;
+        }
+    }
+    return count;
+}
+
+void make_party_slot_overlays(VideoOverlaySet& items, Color color){
+    for (int index = 0; index < 5; index++){
+        items.add(color, party_slot_hp_bar_box(index));
+    }
+}
+
+
+
 CutsceneLetterboxDetector::CutsceneLetterboxDetector(Color color)
     : m_color(color)
     , m_top(0.15, 0.01, 0.50, 0.06)

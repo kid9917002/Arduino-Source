@@ -11,6 +11,11 @@
  *    Story cutscenes (including the ones that interrupt a battle) use
  *    them. Normal post-battle dialogs do not.
  *
+ *  - Party bar: in the overworld HUD, each party member after the lead has
+ *    a small icon at the bottom left with a green HP bar under it. Counting
+ *    the green bars tells how many Pokemon are in the party, which is used
+ *    to confirm a catch.
+ *
  */
 
 #ifndef PokemonAutomation_PokemonLZA_StoryScreenDetectors_H
@@ -39,6 +44,12 @@ private:
     ImageFloatBox m_margin_left;
     ImageFloatBox m_margin_right;
 };
+
+
+//  Number of filled small party slots (party size minus the lead), 0 to 5.
+//  Only meaningful while the overworld HUD is on screen.
+int read_party_slot_count(const ImageViewRGB32& screen);
+void make_party_slot_overlays(VideoOverlaySet& items, Color color = COLOR_GREEN);
 
 
 class CutsceneLetterboxDetector : public StaticScreenDetector{

@@ -4,6 +4,7 @@
  *
  */
 
+#include <algorithm>
 #include "Common/Cpp/Exceptions.h"
 #include "Common/Cpp/Time.h"
 #include "Common/Cpp/Json/JsonValue.h"
@@ -21,6 +22,7 @@
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
 #include "Pokemon/Pokemon_Strings.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
+#include "VideoGames/PokemonLZA/Inference/PokemonLZA_ButtonDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_StoryScreenDetectors.h"
 #include "VideoGames/PokemonLZA/Programs/PokemonLZA_TrainerBattle.h"
@@ -78,6 +80,11 @@ const char* MACRO_WILD_ZONE_1       = "ZA-11-1-走向WildZone1-1.json";
 const char* MACRO_WILD_ZONE_2       = "ZA-11-2-走向WildZone1-2.json";
 const char* MACRO_WILD_ZONE_3       = "ZA-11-3-走向WildZone1-3.json";
 const char* MACRO_FIRST_CATCH       = "ZA-12-1-捕捉1.json";
+const char* MACRO_AFTER_BUNNELBY    = "ZA-12-3-掘掘兔捕捉結束劇情.json";
+//  Walking routes. Each ends standing still, facing the target.
+const char* MACRO_WALK_TO_SCATTERBUG = "ZA-12-4-走向粉蝶蟲.json";
+const char* MACRO_WALK_TO_WEEDLE    = "ZA-12-5-走向獨角蟲.json";
+const char* MACRO_WALK_TO_GATE      = "ZA-12-6-走向大門.json";
 
 }
 
@@ -89,7 +96,7 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         STRING_POKEMON + " LZA", "Auto Story",
         "",
         "Play the opening of the story from a new save: create the character, "
-        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat Urbain, and catch Bunnelby.",
+        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat Urbain, catch Bunnelby, Scatterbug and Weedle, and leave Wild Zone 1.",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -157,6 +164,10 @@ AutoStory::AutoStory()
             {StartPoint::WildZone1,       "wild-zone-1",      "ZA-11 Walk to Wild Zone 1"},
             {StartPoint::FirstCatch,      "first-catch",      "ZA-12-1 First catch"},
             {StartPoint::BunnelbyCapture, "bunnelby",         "ZA-12-2 Bunnelby (掘掘兔) battle + catch (tutorial screen)"},
+            {StartPoint::AfterBunnelby,   "after-bunnelby",   "ZA-12-3 After catching Bunnelby (做得好 dialog)"},
+            {StartPoint::CatchScatterbug, "scatterbug",       "ZA-12-4 Walk to + catch Scatterbug (粉蝶蟲)"},
+            {StartPoint::CatchWeedle,     "weedle",           "ZA-12-5 Walk to + catch Weedle (獨角蟲)"},
+            {StartPoint::LeaveWildZone,   "leave-wild-zone",  "ZA-12-6 Walk to the gate and leave Wild Zone 1"},
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
@@ -471,6 +482,112 @@ void AutoStory::throw_ball(SingleSwitchProgramEnvironment& env, ProControllerCon
 
 
 
+void AutoStory::catch_wild_pokemon(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::string& name
+){
+    env.log("Catching " + name + ".");
+    env.console.overlay().add_log("Catch: " + name);
+
+    VideoOverlaySet overlays(env.console.overlay());
+    make_party_slot_overlays(overlays);
+
+    //  Read how many Pokemon are in the party now. Take the highest of a few
+    //  reads in case something briefly covers the HUD.
+    context.wait_for_all_requests();
+    int before = 0;
+    for (int c = 0; c < 3; c++){
+        before = std::max(before, read_party_slot_count(env.console.video().snapshot()));
+        context.wait_for(200ms);
+    }
+    env.log("Party slots before catching " + name + ": " + std::to_string(before));
+
+    for (int attempt = 1; attempt <= 6; attempt++){
+        env.log(name + ": throw attempt " + std::to_string(attempt));
+        throw_ball(env, context);
+
+        //  The ball flies, shakes, then the Pokemon shows up in the party
+        //  bar (with the "登錄完畢" badge for a new Pokedex entry).
+        WallClock start = current_time();
+        int confirmations = 0;
+        while (current_time() - start < std::chrono::seconds(12)){
+            context.wait_for_all_requests();
+            VideoSnapshot snapshot = env.console.video().snapshot();
+
+            TutorialWindowDetector tutorial;
+            if (tutorial.detect(snapshot)){
+                env.log("Tutorial window. Pressing A.");
+                pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+                continue;
+            }
+
+            int now = read_party_slot_count(snapshot);
+            if (now > before){
+                confirmations++;
+                if (confirmations >= 2){
+                    env.log(name + " caught. Party slots: " + std::to_string(now), COLOR_BLUE);
+                    env.console.overlay().add_log(name + " Caught");
+                    context.wait_for(1000ms);
+                    return;
+                }
+            }else{
+                confirmations = 0;
+            }
+            context.wait_for(400ms);
+        }
+        env.log(name + ": not caught yet.", COLOR_RED);
+    }
+
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "catch_wild_pokemon(): Failed to catch " + name + " after 6 throws. "
+        "Check that the walking macro ends facing it.",
+        env.console
+    );
+}
+
+
+
+void AutoStory::leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Leaving the Wild Zone.");
+    env.console.overlay().add_log("Leave Wild Zone");
+
+    //  "A 離開" prompt next to the player at the gate.
+    const ImageFloatBox PROMPT_BOX(0.50, 0.53, 0.10, 0.12);
+
+    context.wait_for_all_requests();
+    ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
+    int ret = wait_until(env.console, context, 10000ms, {prompt});
+    if (ret < 0){
+        OperationFailedExceptionWithScreenshot::fire(
+            ErrorReportMode::NO_ERROR_REPORT,
+            "leave_wild_zone(): No \"A 離開\" prompt. Check that the walking macro ends at the gate.",
+            env.console
+        );
+    }
+
+    env.log("Exit prompt found. Pressing A.", COLOR_BLUE);
+    pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+    context.wait_for_all_requests();
+
+    //  Wait until the prompt is gone and the transition has finished.
+    for (int c = 0; c < 10; c++){
+        ButtonWatcher still_there(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
+        ret = wait_until(env.console, context, 1000ms, {still_there});
+        if (ret < 0){
+            break;
+        }
+        env.log("Exit prompt still there. Pressing A again.");
+        pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+        context.wait_for_all_requests();
+    }
+    context.wait_for(5000ms);
+    env.log("Left the Wild Zone.", COLOR_BLUE);
+    env.console.overlay().add_log("Left Wild Zone");
+}
+
+
+
 void AutoStory::run_capture_battle(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     AutoStory_Descriptor::Stats& stats = env.current_stats<AutoStory_Descriptor::Stats>();
 
@@ -750,9 +867,31 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         run_macro(env, context, MACRO_FIRST_CATCH);
     }
 
-    //  ZA-12: Bunnelby battle + catch. Stops on the dialog after the catch.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Bunnelby battle.");
-    run_capture_battle(env, context);
+    //  ZA-12: Bunnelby battle + catch. Ends on the dialog after the catch.
+    if (start <= StartPoint::BunnelbyCapture){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Bunnelby battle.");
+        run_capture_battle(env, context);
+    }
+    if (start <= StartPoint::AfterBunnelby){
+        run_macro(env, context, MACRO_AFTER_BUNNELBY);
+    }
+
+    //  ZA-12: catch Scatterbug and Weedle without battling.
+    if (start <= StartPoint::CatchScatterbug){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Scatterbug.");
+        run_macro(env, context, MACRO_WALK_TO_SCATTERBUG);
+        catch_wild_pokemon(env, context, "Scatterbug");
+    }
+    if (start <= StartPoint::CatchWeedle){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
+        run_macro(env, context, MACRO_WALK_TO_WEEDLE);
+        catch_wild_pokemon(env, context, "Weedle");
+    }
+
+    //  ZA-12: leave Wild Zone 1. Stops once outside.
+    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
+    run_macro(env, context, MACRO_WALK_TO_GATE);
+    leave_wild_zone(env, context);
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
 }

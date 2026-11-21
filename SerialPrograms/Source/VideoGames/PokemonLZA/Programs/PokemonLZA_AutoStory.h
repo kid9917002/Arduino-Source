@@ -11,8 +11,9 @@
  *    ZA-05  Hotel Z story, night, morning, roll tutorial, leave hotel
  *    ZA-06  walk to Urbain, Urbain battle (vision)
  *    ZA-07 .. ZA-11  map tutorial, rocks, rooftop, PC, Pokedex, Wild Zone 1
- *    ZA-12  first catch, Bunnelby battle + catch (vision)
- *  Stops on the dialog after catching Bunnelby ("做得好！").
+ *    ZA-12  first catch, Bunnelby battle + catch (vision), catch Scatterbug
+ *           and Weedle without battling (vision), leave Wild Zone 1 (vision)
+ *  Stops after leaving Wild Zone 1.
  *
  *  The button sequences between vision checkpoints are Turbo Macro JSON
  *  files read from a user-selected folder, so routes can be re-recorded
@@ -87,6 +88,10 @@ public:
         WildZone1,          //  ZA-11
         FirstCatch,         //  ZA-12-1
         BunnelbyCapture,    //  on the tutorial screen (ZA-12-2-掘掘兔戰鬥捕捉教學前)
+        AfterBunnelby,      //  ZA-12-3, on the dialog after catching Bunnelby
+        CatchScatterbug,    //  ZA-12-4, on ZA-12-4-捕捉粉蝶蟲前
+        CatchWeedle,        //  ZA-12-5, right after catching Scatterbug
+        LeaveWildZone,      //  ZA-12-6, right after catching Weedle
     };
 
     enum class Starter{
@@ -117,6 +122,16 @@ private:
     //  Wild battle tutorial: send out a Pokemon, weaken Bunnelby, then
     //  throw a ball when told to. Stops on the dialog after the catch.
     void run_capture_battle(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+
+    //  Throw balls at the Pokemon in front of us (no battle) until the party
+    //  bar shows one more Pokemon.
+    void catch_wild_pokemon(
+        SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+        const std::string& name
+    );
+
+    //  Press A on the "A 離開" prompt at the Wild Zone gate.
+    void leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
     //  Hold ZL to lock on and tap ZR to throw a ball.
     void throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
