@@ -52,6 +52,17 @@ public:
         Bottom1, Bottom2, Bottom3, Bottom4,
     };
 
+    //  Where to start the run. Each later step assumes the game is on the
+    //  screen the previous step ends on.
+    enum class StartPoint{
+        CreateCharacter,    //  ZA-00, from the beginning
+        SelectCharacter,    //  on the LOOKS screen (after ZA-00-createChar0)
+        TrainStation,       //  ZA-01
+        ChasePancham,       //  ZA-02-0
+        ChooseStarter,      //  ZA-02-1
+        FirstBattle,        //  on the pre-battle screen (ZA-02-戰鬥前)
+    };
+
     enum class Starter{
         Chikorita,  //  菊草葉
         Tepig,      //  暖暖豬
@@ -79,6 +90,7 @@ private:
 
 private:
     StringOption MACRO_FOLDER;
+    EnumDropdownOption<StartPoint> START_POINT;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;

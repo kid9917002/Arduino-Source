@@ -91,6 +91,20 @@ AutoStory::AutoStory()
         "F:\\Game\\za_auto_2",
         "F:\\Game\\za_auto_2"
     )
+    , START_POINT(
+        "<b>Start From:</b><br>"
+        "Which step to start at. The game must already be on the screen that step starts from.",
+        {
+            {StartPoint::CreateCharacter, "create-character", "ZA-00 Create character (beginning)"},
+            {StartPoint::SelectCharacter, "select-character", "ZA-00 LOOKS screen (pick character)"},
+            {StartPoint::TrainStation,    "train-station",    "ZA-01 Train station"},
+            {StartPoint::ChasePancham,    "chase-pancham",    "ZA-02-0 Chase Pancham"},
+            {StartPoint::ChooseStarter,   "choose-starter",   "ZA-02-1 Choose starter"},
+            {StartPoint::FirstBattle,     "first-battle",     "ZA-02 First battle (pre-battle screen)"},
+        },
+        LockMode::LOCK_WHILE_RUNNING,
+        StartPoint::CreateCharacter
+    )
     , CHARACTER(
         "<b>Character Look:</b><br>"
         "Which portrait to pick on the LOOKS screen.",
@@ -125,6 +139,7 @@ AutoStory::AutoStory()
     })
 {
     PA_ADD_OPTION(MACRO_FOLDER);
+    PA_ADD_OPTION(START_POINT);
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
@@ -368,21 +383,33 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  Connect the controller.
     require_player(env.console, context, BUTTON_NONE);
 
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Creating character.");
+    const StartPoint start = START_POINT.get();
 
     //  ZA-00: create character.
-    run_macro(env, context, MACRO_CREATE_CHAR_0);
-    select_character(env, context);
-    run_macro(env, context, MACRO_CREATE_CHAR_3);
+    if (start <= StartPoint::CreateCharacter){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Creating character.");
+        run_macro(env, context, MACRO_CREATE_CHAR_0);
+    }
+    if (start <= StartPoint::SelectCharacter){
+        select_character(env, context);
+        run_macro(env, context, MACRO_CREATE_CHAR_3);
+    }
 
     //  ZA-01: train station, chase Pancham.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Train station.");
-    run_macro(env, context, MACRO_STATION);
+    if (start <= StartPoint::TrainStation){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Train station.");
+        run_macro(env, context, MACRO_STATION);
+    }
 
     //  ZA-02: chase Pancham, pick starter.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");
-    run_macro(env, context, MACRO_CHASE_PANCHAM);
-    run_macro(env, context, starter_macro_filename());
+    if (start <= StartPoint::ChasePancham){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Chasing Pancham.");
+        run_macro(env, context, MACRO_CHASE_PANCHAM);
+    }
+    if (start <= StartPoint::ChooseStarter){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");
+        run_macro(env, context, starter_macro_filename());
+    }
 
     //  ZA-02: first battle. Stops on the post-battle dialog.
     send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "First battle.");
