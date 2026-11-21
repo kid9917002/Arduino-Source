@@ -172,6 +172,13 @@ AutoStory::AutoStory()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
+    , FACE_NORTH_ONLY(
+        "<b>Only Face Camera North:</b><br>"
+        "Turn the camera to face north and stop. Use this right before recording "
+        "ZA-12-4 / ZA-12-5 / ZA-12-6, because the program does the same before playing them.",
+        LockMode::LOCK_WHILE_RUNNING,
+        false
+    )
     , CHARACTER(
         "<b>Character Look:</b><br>"
         "Which portrait to pick on the LOOKS screen.",
@@ -207,6 +214,7 @@ AutoStory::AutoStory()
 {
     PA_ADD_OPTION(MACRO_FOLDER);
     PA_ADD_OPTION(START_POINT);
+    PA_ADD_OPTION(FACE_NORTH_ONLY);
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
@@ -471,6 +479,103 @@ void AutoStory::run_trainer_battle(
 
 
 
+void AutoStory::face_camera_north(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Turning the camera to face north.");
+    env.console.overlay().add_log("Face North");
+
+    const double TOLERANCE = 6.0;
+
+    //  Signed degrees of heading change per millisecond of right stick
+    //  pushed right. Starts as a guess and is re-measured after each push.
+    double rate = 0.15;
+
+    auto wrap = [](double degrees){
+        while (degrees > 180){
+            degrees -= 360;
+        }
+        while (degrees <= -180){
+            degrees += 360;
+        }
+        return degrees;
+    };
+
+    //  Median of 3 reads to ride out icons passing over the minimap.
+    auto read_heading = [&](double& heading) -> bool{
+        double reads[3] = {0, 0, 0};
+        int count = 0;
+        for (int c = 0; c < 6 && count < 3; c++){
+            context.wait_for_all_requests();
+            double value = 0;
+            if (read_camera_heading(env.console.video().snapshot(), value)){
+                reads[count++] = value;
+            }
+            context.wait_for(100ms);
+        }
+        if (count == 0){
+            return false;
+        }
+        //  Median on the circle: pick the read closest to the others.
+        int best = 0;
+        double best_cost = 1e9;
+        for (int i = 0; i < count; i++){
+            double cost = 0;
+            for (int j = 0; j < count; j++){
+                cost += std::abs(wrap(reads[i] - reads[j]));
+            }
+            if (cost < best_cost){
+                best_cost = cost;
+                best = i;
+            }
+        }
+        heading = reads[best];
+        return true;
+    };
+
+    double heading = 0;
+    for (int iteration = 0; iteration < 20; iteration++){
+        if (!read_heading(heading)){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "face_camera_north(): Unable to read the minimap view cone.",
+                env.console
+            );
+        }
+
+        double error = wrap(0 - heading);
+        env.log("Camera heading: " + std::to_string((int)heading) + " degrees");
+        if (std::abs(error) <= TOLERANCE){
+            env.log("Camera faces north.", COLOR_BLUE);
+            return;
+        }
+
+        //  Push right (+x) to change the heading by +rate per ms.
+        double push_ms = std::abs(error / rate);
+        push_ms = std::max(40.0, std::min(push_ms, 600.0));
+        double direction = (error / rate) > 0 ? 1.0 : -1.0;
+        pbf_move_right_joystick(
+            context, {direction, 0},
+            Milliseconds((int64_t)push_ms), 400ms
+        );
+
+        //  Re-measure the rate from what actually happened.
+        double after = 0;
+        if (read_heading(after)){
+            double change = wrap(after - heading);
+            if (std::abs(change) >= 3){
+                rate = change / (direction * push_ms);
+            }
+        }
+    }
+
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "face_camera_north(): Unable to turn the camera to face north.",
+        env.console
+    );
+}
+
+
+
 void AutoStory::throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     env.log("Throwing a ball.", COLOR_BLUE);
     env.console.overlay().add_log("Throw Ball");
@@ -729,6 +834,11 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  Connect the controller.
     require_player(env.console, context, BUTTON_NONE);
 
+    if (FACE_NORTH_ONLY){
+        face_camera_north(env, context);
+        return;
+    }
+
     const StartPoint start = START_POINT.get();
 
     //  ZA-00: create character.
@@ -879,17 +989,20 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  ZA-12: catch Scatterbug and Weedle without battling.
     if (start <= StartPoint::CatchScatterbug){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Scatterbug.");
+        face_camera_north(env, context);
         run_macro(env, context, MACRO_WALK_TO_SCATTERBUG);
         catch_wild_pokemon(env, context, "Scatterbug");
     }
     if (start <= StartPoint::CatchWeedle){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
+        face_camera_north(env, context);
         run_macro(env, context, MACRO_WALK_TO_WEEDLE);
         catch_wild_pokemon(env, context, "Weedle");
     }
 
     //  ZA-12: leave Wild Zone 1. Stops once outside.
     send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
+    face_camera_north(env, context);
     run_macro(env, context, MACRO_WALK_TO_GATE);
     leave_wild_zone(env, context);
 

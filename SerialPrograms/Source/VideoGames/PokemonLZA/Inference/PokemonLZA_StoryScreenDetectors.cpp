@@ -4,6 +4,8 @@
  *
  */
 
+#include <algorithm>
+#include <cmath>
 #include "CommonFramework/ImageTools/ImageStats.h"
 #include "CommonFramework/ImageTypes/ImageViewRGB32.h"
 #include "CommonFramework/VideoPipeline/VideoOverlayScopes.h"
@@ -101,6 +103,87 @@ void make_party_slot_overlays(VideoOverlaySet& items, Color color){
     for (int index = 0; index < 5; index++){
         items.add(color, party_slot_hp_bar_box(index));
     }
+}
+
+
+
+bool read_camera_heading(const ImageViewRGB32& screen, double& degrees){
+    //  Minimap center and radii, measured on 16:9 frames. Distances are in
+    //  units of the frame width so the disk stays round.
+    const double CENTER_X = 0.0960;
+    const double CENTER_Y = 0.1655;
+    const double OUTER_RADIUS = 0.058;
+    const double INNER_RADIUS = 0.012;   //  skip the player arrow
+
+    double width = (double)screen.width();
+    double height = (double)screen.height();
+    if (width <= 0 || height <= 0){
+        return false;
+    }
+
+    double cx = CENTER_X * width;
+    double cy = CENTER_Y * height;
+    double r_outer = OUTER_RADIUS * width;
+    double r_inner = INNER_RADIUS * width;
+
+    long x_min = std::max<long>(0, (long)(cx - r_outer));
+    long x_max = std::min<long>((long)width - 1, (long)(cx + r_outer));
+    long y_min = std::max<long>(0, (long)(cy - r_outer));
+    long y_max = std::min<long>((long)height - 1, (long)(cy + r_outer));
+
+    size_t disk_pixels = 0;
+    size_t cone_pixels = 0;
+    double sum_x = 0;
+    double sum_y = 0;
+    for (long y = y_min; y <= y_max; y++){
+        for (long x = x_min; x <= x_max; x++){
+            double dx = (double)x - cx;
+            double dy = (double)y - cy;
+            double distance = std::sqrt(dx * dx + dy * dy);
+            if (distance >= r_outer || distance <= r_inner){
+                continue;
+            }
+            disk_pixels++;
+
+            uint32_t pixel = screen.pixel((size_t)x, (size_t)y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+
+            //  Saturated blue = the player arrow itself, not the cone.
+            bool arrow = b > 200 && r < 90 && g > 90 && g < 190;
+            if (arrow){
+                continue;
+            }
+            if (b >= r + 45 && b >= 170){
+                cone_pixels++;
+                sum_x += dx;
+                sum_y += dy;
+            }
+        }
+    }
+
+    //  Overworld frames measure 2.7% to 6% cone pixels. Frames without the
+    //  minimap (dialogs, cutscenes) measure under 0.5%.
+    if (disk_pixels == 0 || cone_pixels * 1000 < disk_pixels * 15){
+        return false;
+    }
+
+    double mean_x = sum_x / (double)cone_pixels;
+    double mean_y = sum_y / (double)cone_pixels;
+
+    //  A cone spreads to one side of the center. If the mean is near the
+    //  center the reading is not reliable.
+    if (std::sqrt(mean_x * mean_x + mean_y * mean_y) < 0.15 * r_outer){
+        return false;
+    }
+
+    const double PI = 3.14159265358979323846;
+    degrees = std::atan2(mean_x, -mean_y) * 180.0 / PI;
+    if (degrees < 0){
+        degrees += 360.0;
+    }
+    return true;
 }
 
 

@@ -16,6 +16,10 @@
  *    the green bars tells how many Pokemon are in the party, which is used
  *    to confirm a catch.
  *
+ *  - Camera heading: the minimap is north-up and the player is always at
+ *    its center. The light-blue view cone shows which way the camera
+ *    faces.
+ *
  */
 
 #ifndef PokemonAutomation_PokemonLZA_StoryScreenDetectors_H
@@ -50,6 +54,11 @@ private:
 //  Only meaningful while the overworld HUD is on screen.
 int read_party_slot_count(const ImageViewRGB32& screen);
 void make_party_slot_overlays(VideoOverlaySet& items, Color color = COLOR_GREEN);
+
+//  Camera heading in degrees from the minimap view cone. 0 = north,
+//  90 = east, 180 = south, 270 = west. Returns false if the minimap is not
+//  on screen.
+bool read_camera_heading(const ImageViewRGB32& screen, double& degrees);
 
 
 class CutsceneLetterboxDetector : public StaticScreenDetector{

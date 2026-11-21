@@ -24,6 +24,7 @@
 #ifndef PokemonAutomation_PokemonLZA_AutoStory_H
 #define PokemonAutomation_PokemonLZA_AutoStory_H
 
+#include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "Common/Cpp/Options/StringOption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
@@ -133,6 +134,11 @@ private:
     //  Press A on the "A 離開" prompt at the Wild Zone gate.
     void leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
+    //  Turn the camera (right stick) until the minimap view cone points
+    //  north. Catching turns the camera toward the target, so this makes the
+    //  walking macros start from the same direction every time.
+    void face_camera_north(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+
     //  Hold ZL to lock on and tap ZR to throw a ball.
     void throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
@@ -142,6 +148,7 @@ private:
 private:
     StringOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
+    BooleanCheckBoxOption FACE_NORTH_ONLY;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;
