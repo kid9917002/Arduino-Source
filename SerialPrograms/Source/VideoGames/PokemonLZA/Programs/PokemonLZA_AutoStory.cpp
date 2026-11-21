@@ -550,7 +550,7 @@ void AutoStory::run_capture_battle(SingleSwitchProgramEnvironment& env, ProContr
 
             //  No move palette and no dialog. If we never got into battle,
             //  the Pokemon is probably not out yet. Send it out again.
-            if (!seen_battle && current_time() - last_send_out > std::chrono::seconds(8)){
+            if (!seen_battle && current_time() - last_send_out > std::chrono::seconds(3)){
                 env.log("Not in battle yet. Sending out Pokemon again (D-pad Up).");
                 pbf_press_dpad(context, DPAD_UP, 160ms, 1500ms);
                 last_send_out = current_time();
