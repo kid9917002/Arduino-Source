@@ -42,6 +42,9 @@ const char* MACRO_CHASE_PANCHAM     = "ZA-02-0-追頑皮熊貓4-without-restart.
 const char* MACRO_STARTER_CHIKORITA = "ZA-02-1-選擇御三家(菊草葉).json";
 const char* MACRO_STARTER_TEPIG     = "ZA-02-1-選擇御三家(暖暖豬).json";
 const char* MACRO_STARTER_TOTODILE  = "ZA-02-1-選擇御三家(小鋸鱷).json";
+const char* MACRO_BATTLE_ZONE       = "ZA-03-0-對戰特區前.json";
+const char* MACRO_ESCAPE_0          = "ZA-03-1-逃出對戰特區0.json";
+const char* MACRO_ESCAPE_1          = "ZA-03-1-逃出對戰特區1.json";
 
 }
 
@@ -53,7 +56,7 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         STRING_POKEMON + " LZA", "Auto Story",
         "",
         "Play the opening of the story from a new save: create the character, "
-        "pick a starter and win the first battle.",
+        "pick a starter, win the first battle, then escape the battle zone and win the waitress battle.",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -101,6 +104,9 @@ AutoStory::AutoStory()
             {StartPoint::ChasePancham,    "chase-pancham",    "ZA-02-0 Chase Pancham"},
             {StartPoint::ChooseStarter,   "choose-starter",   "ZA-02-1 Choose starter"},
             {StartPoint::FirstBattle,     "first-battle",     "ZA-02 First battle (pre-battle screen)"},
+            {StartPoint::BattleZone,      "battle-zone",      "ZA-03-0 Battle zone (after first battle)"},
+            {StartPoint::EscapeBattleZone,"escape-zone",      "ZA-03-1 Escape the battle zone"},
+            {StartPoint::WaitressBattle,  "waitress-battle",  "ZA-03-2 Waitress battle (pre-battle screen)"},
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
@@ -297,11 +303,14 @@ void AutoStory::select_character(SingleSwitchProgramEnvironment& env, ProControl
 
 
 
-void AutoStory::run_first_battle(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+void AutoStory::run_trainer_battle(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::string& name
+){
     AutoStory_Descriptor::Stats& stats = env.current_stats<AutoStory_Descriptor::Stats>();
 
-    env.log("Starting first battle.");
-    env.console.overlay().add_log("First Battle");
+    env.log("Starting battle: " + name);
+    env.console.overlay().add_log("Battle: " + name);
 
     //  The story battles have no "- Run" prompt, so RunFromBattleWatcher
     //  cannot be used to tell that we are in battle. Instead, every loop
@@ -321,7 +330,7 @@ void AutoStory::run_first_battle(SingleSwitchProgramEnvironment& env, ProControl
             env.update_stats();
             OperationFailedExceptionWithScreenshot::fire(
                 ErrorReportMode::NO_ERROR_REPORT,
-                "run_first_battle(): Battle did not finish within 5 minutes.",
+                "run_trainer_battle(): " + name + " did not finish within 5 minutes.",
                 env.console
             );
         }
@@ -411,9 +420,26 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         run_macro(env, context, starter_macro_filename());
     }
 
-    //  ZA-02: first battle. Stops on the post-battle dialog.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "First battle.");
-    run_first_battle(env, context);
+    //  ZA-02: first battle. Ends on the post-battle dialog.
+    if (start <= StartPoint::FirstBattle){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "First battle.");
+        run_trainer_battle(env, context, "First Battle");
+    }
+
+    //  ZA-03: battle zone, escape.
+    if (start <= StartPoint::BattleZone){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Battle zone.");
+        run_macro(env, context, MACRO_BATTLE_ZONE);
+    }
+    if (start <= StartPoint::EscapeBattleZone){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Escaping the battle zone.");
+        run_macro(env, context, MACRO_ESCAPE_0);
+        run_macro(env, context, MACRO_ESCAPE_1);
+    }
+
+    //  ZA-03: waitress battle. Stops on the post-battle dialog.
+    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Waitress battle.");
+    run_trainer_battle(env, context, "Waitress Battle");
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
 }

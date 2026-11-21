@@ -6,7 +6,8 @@
  *    ZA-00  create character (vision: pick the portrait)
  *    ZA-01  train station, chase Pancham
  *    ZA-02  chase Pancham, pick starter (dropdown), first battle (vision)
- *  Stops on the post-battle dialog.
+ *    ZA-03  battle zone, escape, waitress battle (vision)
+ *  Stops on the dialog after the waitress battle.
  *
  *  The button sequences between vision checkpoints are Turbo Macro JSON
  *  files read from a user-selected folder, so routes can be re-recorded
@@ -61,6 +62,9 @@ public:
         ChasePancham,       //  ZA-02-0
         ChooseStarter,      //  ZA-02-1
         FirstBattle,        //  on the pre-battle screen (ZA-02-戰鬥前)
+        BattleZone,         //  ZA-03-0, on the dialog after the first battle
+        EscapeBattleZone,   //  ZA-03-1
+        WaitressBattle,     //  on the pre-battle screen (ZA-03-2-女服務生戰鬥前)
     };
 
     enum class Starter{
@@ -81,9 +85,12 @@ private:
     //  confirm it is highlighted (white tile + green marker).
     void select_character(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
-    //  From the pre-battle dialog, fight the first battle and stop on the
+    //  From the pre-battle dialog, fight a trainer battle and stop on the
     //  post-battle dialog.
-    void run_first_battle(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+    void run_trainer_battle(
+        SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+        const std::string& name
+    );
 
     std::string starter_macro_filename() const;
 
