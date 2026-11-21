@@ -2220,6 +2220,8 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_OverworldPartySelectionDetector.h
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_SelectionArrowDetector.cpp
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_SelectionArrowDetector.h
+    Source/VideoGames/PokemonLZA/Inference/PokemonLZA_StoryScreenDetectors.cpp
+    Source/VideoGames/PokemonLZA/Inference/PokemonLZA_StoryScreenDetectors.h
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_WeatherDetector.cpp
     Source/VideoGames/PokemonLZA/Inference/PokemonLZA_WeatherDetector.h
     Source/VideoGames/PokemonLZA/InferenceTraining/PokemonLZA_GenerateLocationNameOCR.cpp

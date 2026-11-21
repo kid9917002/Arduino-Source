@@ -6,8 +6,11 @@
  *    ZA-00  create character (vision: pick the portrait)
  *    ZA-01  train station, chase Pancham
  *    ZA-02  chase Pancham, pick starter (dropdown), first battle (vision)
- *    ZA-03  battle zone, escape, waitress battle (vision)
- *  Stops on the dialog after the waitress battle.
+ *    ZA-03  battle zone, escape, waitress battle (vision), escape
+ *    ZA-04  walk into Hotel Z
+ *    ZA-05  Hotel Z story, night, morning, roll tutorial, leave hotel
+ *    ZA-06  walk to Gai, Gai battle (vision)
+ *  Stops on the dialog after the Gai battle.
  *
  *  The button sequences between vision checkpoints are Turbo Macro JSON
  *  files read from a user-selected folder, so routes can be re-recorded
@@ -65,6 +68,16 @@ public:
         BattleZone,         //  ZA-03-0, on the dialog after the first battle
         EscapeBattleZone,   //  ZA-03-1
         WaitressBattle,     //  on the pre-battle screen (ZA-03-2-女服務生戰鬥前)
+        EscapeBattleZone2,  //  ZA-03-3, on the dialog after the waitress battle
+        EscapeBattleZone3,  //  ZA-03-4
+        WalkIntoHotel,      //  ZA-04
+        HotelIntro,         //  ZA-05-0 .. ZA-05-2
+        HotelUpstairs,      //  ZA-05-3 .. ZA-05-6
+        HotelNight,         //  ZA-05-7
+        HotelMorning,       //  ZA-05-8
+        RollTutorial,       //  ZA-05-9 .. ZA-05-11
+        WalkToGai,          //  ZA-06-1
+        GaiBattle,          //  on the pre-battle screen (ZA-06-2-蓋伊戰鬥前)
     };
 
     enum class Starter{

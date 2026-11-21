@@ -21,6 +21,7 @@
 #include "Pokemon/Pokemon_Strings.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h"
+#include "VideoGames/PokemonLZA/Inference/PokemonLZA_StoryScreenDetectors.h"
 #include "VideoGames/PokemonLZA/Programs/PokemonLZA_TrainerBattle.h"
 #include "PokemonLZA_AutoStory.h"
 
@@ -45,6 +46,24 @@ const char* MACRO_STARTER_TOTODILE  = "ZA-02-1-選擇御三家(小鋸鱷).json";
 const char* MACRO_BATTLE_ZONE       = "ZA-03-0-對戰特區前.json";
 const char* MACRO_ESCAPE_0          = "ZA-03-1-逃出對戰特區0.json";
 const char* MACRO_ESCAPE_1          = "ZA-03-1-逃出對戰特區1.json";
+const char* MACRO_ESCAPE_2_1        = "ZA-03-3-逃出對戰特區2-1.json";
+const char* MACRO_ESCAPE_2_2        = "ZA-03-3-逃出對戰特區2-2.json";
+const char* MACRO_ESCAPE_3          = "ZA-03-4-逃出對戰特區3.json";
+const char* MACRO_HOTEL_WALK_0      = "ZA-04-0-走進Z飯店.json";
+const char* MACRO_HOTEL_WALK_1      = "ZA-04-1-走進Z飯店.json";
+const char* MACRO_HOTEL_INTRO       = "ZA-05-0-Z飯店-介紹.json";
+const char* MACRO_HOTEL_AZ_1        = "ZA-05-1-Z飯店-向AZ對話1.json";
+const char* MACRO_HOTEL_AZ_2        = "ZA-05-2-Z飯店-向AZ對話2.json";
+const char* MACRO_HOTEL_ELEVATOR    = "ZA-05-3-Z飯店-走向電梯門口上2F.json";
+const char* MACRO_HOTEL_ROOM        = "ZA-05-4-Z飯店-走進202客房.json";
+const char* MACRO_HOTEL_BED         = "ZA-05-5-Z飯店-202房間走向床邊.json";
+const char* MACRO_HOTEL_DOOR        = "ZA-05-6-Z飯店-202房間走向房門.json";
+const char* MACRO_HOTEL_NIGHT       = "ZA-05-7-Z飯店-晚上劇情.json";
+const char* MACRO_HOTEL_MORNING     = "ZA-05-8-Z飯店-隔天早上起床後出房門到2F電梯門口.json";
+const char* MACRO_ROLL_TUTORIAL     = "ZA-05-9-Z飯店-翻滾教學.json";
+const char* MACRO_ROLL_TO_DOOR      = "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json";
+const char* MACRO_LEAVE_HOTEL       = "ZA-05-11-Z飯店-出ZA飯店.json";
+const char* MACRO_WALK_TO_GAI       = "ZA-06-1-走向蓋伊對戰.json";
 
 }
 
@@ -56,7 +75,7 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         STRING_POKEMON + " LZA", "Auto Story",
         "",
         "Play the opening of the story from a new save: create the character, "
-        "pick a starter, win the first battle, then escape the battle zone and win the waitress battle.",
+        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, and win the battle against Gai.",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -107,6 +126,16 @@ AutoStory::AutoStory()
             {StartPoint::BattleZone,      "battle-zone",      "ZA-03-0 Battle zone (after first battle)"},
             {StartPoint::EscapeBattleZone,"escape-zone",      "ZA-03-1 Escape the battle zone"},
             {StartPoint::WaitressBattle,  "waitress-battle",  "ZA-03-2 Waitress battle (pre-battle screen)"},
+            {StartPoint::EscapeBattleZone2, "escape-zone-2",  "ZA-03-3 Escape the battle zone 2 (after waitress battle)"},
+            {StartPoint::EscapeBattleZone3, "escape-zone-3",  "ZA-03-4 Escape the battle zone 3"},
+            {StartPoint::WalkIntoHotel,   "walk-into-hotel",  "ZA-04 Walk into Hotel Z"},
+            {StartPoint::HotelIntro,      "hotel-intro",      "ZA-05-0 Hotel Z intro / talk to AZ"},
+            {StartPoint::HotelUpstairs,   "hotel-upstairs",   "ZA-05-3 Elevator to 2F / room 202"},
+            {StartPoint::HotelNight,      "hotel-night",      "ZA-05-7 Night scene"},
+            {StartPoint::HotelMorning,    "hotel-morning",    "ZA-05-8 Next morning"},
+            {StartPoint::RollTutorial,    "roll-tutorial",    "ZA-05-9 Roll tutorial / leave hotel"},
+            {StartPoint::WalkToGai,       "walk-to-gai",      "ZA-06-1 Walk to Gai"},
+            {StartPoint::GaiBattle,       "gai-battle",       "ZA-06-2 Gai battle (pre-battle screen)"},
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
@@ -350,6 +379,30 @@ void AutoStory::run_trainer_battle(
         //  No move palette. Either we are not in battle yet, the battle is
         //  over, or something is covering the screen.
         context.wait_for_all_requests();
+        {
+            VideoSnapshot snapshot = env.console.video().snapshot();
+
+            //  Tutorial window (one page per A press). Can appear before or
+            //  in the middle of a battle.
+            TutorialWindowDetector tutorial;
+            if (tutorial.detect(snapshot)){
+                env.log("Tutorial window. Pressing A.");
+                pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+                continue;
+            }
+
+            //  Letterboxed cutscene in the middle of a battle (for example
+            //  when the opponent sends out the next Pokemon). Its dialog
+            //  looks like the post-battle dialog, so advance it here instead
+            //  of treating it as the end of the battle.
+            CutsceneLetterboxDetector letterbox;
+            if (seen_battle && letterbox.detect(snapshot)){
+                env.log("Mid-battle cutscene. Pressing A.");
+                pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+                last_attack = current_time();
+                continue;
+            }
+        }
         FlatWhiteDialogWatcher dialog(COLOR_RED, &env.console.overlay(), 500ms);
         int ret = wait_until(
             env.console, context,
@@ -437,9 +490,63 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         run_macro(env, context, MACRO_ESCAPE_1);
     }
 
-    //  ZA-03: waitress battle. Stops on the post-battle dialog.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Waitress battle.");
-    run_trainer_battle(env, context, "Waitress Battle");
+    //  ZA-03: waitress battle. Ends on the post-battle dialog.
+    if (start <= StartPoint::WaitressBattle){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Waitress battle.");
+        run_trainer_battle(env, context, "Waitress Battle");
+    }
+
+    //  ZA-03: escape the battle zone.
+    if (start <= StartPoint::EscapeBattleZone2){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Escaping the battle zone.");
+        run_macro(env, context, MACRO_ESCAPE_2_1);
+        run_macro(env, context, MACRO_ESCAPE_2_2);
+    }
+    if (start <= StartPoint::EscapeBattleZone3){
+        run_macro(env, context, MACRO_ESCAPE_3);
+    }
+
+    //  ZA-04: walk into Hotel Z.
+    if (start <= StartPoint::WalkIntoHotel){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking into Hotel Z.");
+        run_macro(env, context, MACRO_HOTEL_WALK_0);
+        run_macro(env, context, MACRO_HOTEL_WALK_1);
+    }
+
+    //  ZA-05: Hotel Z.
+    if (start <= StartPoint::HotelIntro){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Hotel Z.");
+        run_macro(env, context, MACRO_HOTEL_INTRO);
+        run_macro(env, context, MACRO_HOTEL_AZ_1);
+        run_macro(env, context, MACRO_HOTEL_AZ_2);
+    }
+    if (start <= StartPoint::HotelUpstairs){
+        run_macro(env, context, MACRO_HOTEL_ELEVATOR);
+        run_macro(env, context, MACRO_HOTEL_ROOM);
+        run_macro(env, context, MACRO_HOTEL_BED);
+        run_macro(env, context, MACRO_HOTEL_DOOR);
+    }
+    if (start <= StartPoint::HotelNight){
+        run_macro(env, context, MACRO_HOTEL_NIGHT);
+    }
+    if (start <= StartPoint::HotelMorning){
+        run_macro(env, context, MACRO_HOTEL_MORNING);
+    }
+    if (start <= StartPoint::RollTutorial){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Roll tutorial.");
+        run_macro(env, context, MACRO_ROLL_TUTORIAL);
+        run_macro(env, context, MACRO_ROLL_TO_DOOR);
+        run_macro(env, context, MACRO_LEAVE_HOTEL);
+    }
+
+    //  ZA-06: Gai.
+    if (start <= StartPoint::WalkToGai){
+        run_macro(env, context, MACRO_WALK_TO_GAI);
+    }
+
+    //  ZA-06: Gai battle. Stops on the post-battle dialog.
+    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Gai battle.");
+    run_trainer_battle(env, context, "Gai Battle");
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
 }
