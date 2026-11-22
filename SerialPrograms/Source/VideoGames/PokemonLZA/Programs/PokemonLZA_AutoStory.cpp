@@ -809,6 +809,11 @@ std::pair<double, double> AutoStory::navigate_by_minimap(
     env.log("Navigating to " + name + " by the minimap.");
     env.console.overlay().add_log("Go to " + name);
 
+    //  Lock-on (ZL) tilts the camera toward the target. Press L to put the
+    //  camera back behind the player at the normal angle. The heading is
+    //  read from the minimap every step, so where it ends up facing is fine.
+    pbf_press_button(context, BUTTON_L, 160ms, 500ms);
+
     const double PI = 3.14159265358979323846;
 
     //  Read the player position (relative to the zone marker) and the camera
