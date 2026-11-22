@@ -14,7 +14,7 @@
  *    ZA-12  first catch, Bunnelby battle + catch (vision), catch Scatterbug
  *           and Weedle without battling (vision), leave Wild Zone 1 (vision)
  *  ZA-13  walk to the Pokemon lab (minimap "!"), elevator to 3F, talk to
- *         Mimi (world "!"), open the research list in the menu, close it.
+ *         Mable (world "!"), open the research list in the menu, close it.
  *  Dialogs in the lab part are cleared by vision, not recorded A presses,
  *  so it works in any game language.
  *
@@ -99,8 +99,8 @@ public:
         LeaveWildZone,      //  ZA-12-6, right after catching Weedle
         WalkToLab,          //  ZA-13-1, outside Wild Zone 1: walk to the lab and go in
         LabElevator,        //  ZA-13-2, lab 1F (saved): elevator to 3F, 3F story
-        LabMimi,            //  ZA-13-3, lab 3F (saved): walk to the "!" and the story
-        ResearchMenu,       //  ZA-13-4, next to Mimi: X, X (research list), B out
+        LabMable,            //  ZA-13-3, lab 3F (saved): walk to the "!" and the story
+        ResearchMenu,       //  ZA-13-4, next to Mable: X, X (research list), B out
     };
 
     //  How to get around Wild Zone 1 after catching Scatterbug.
@@ -201,7 +201,7 @@ private:
 
     void walk_to_lab(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
     void take_lab_elevator(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
-    void walk_to_mimi(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+    void walk_to_mable(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
     void open_research_list(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
 

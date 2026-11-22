@@ -96,7 +96,7 @@ bool find_choice_menu_pointer(const ImageViewRGB32& screen, double& pointer_y);
 
 
 //  Mint-green "next" chevron (a hollow V) on the dark boxes in menus, e.g.
-//  Mimi's lines and the "reward received" card in the research list. Means
+//  Mable's lines and the "reward received" card in the research list. Means
 //  "press A to continue". Not the text, so it works in every language.
 bool find_green_next_chevron(const ImageViewRGB32& screen);
 

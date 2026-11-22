@@ -113,7 +113,7 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         "",
         "Play the opening of the story from a new save: create the character, "
         "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat Urbain, catch Bunnelby, Scatterbug and Weedle, "
-        "leave Wild Zone 1, go to the lab and open Mimi's research list.",
+        "leave Wild Zone 1, go to the lab and open Mable's Research (茉蜜姬調查).",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -187,8 +187,8 @@ AutoStory::AutoStory()
             {StartPoint::LeaveWildZone,   "leave-wild-zone",  "ZA-12-6 Walk to the gate and leave Wild Zone 1"},
             {StartPoint::WalkToLab,       "walk-to-lab",      "ZA-13-1 Walk to the lab and go in (outside Wild Zone 1)"},
             {StartPoint::LabElevator,     "lab-elevator",     "ZA-13-2 Lab 1F: elevator to 3F (所長室)"},
-            {StartPoint::LabMimi,         "lab-mimi",         "ZA-13-3 Lab 3F: walk to the \"!\" (茉蜜姬)"},
-            {StartPoint::ResearchMenu,    "research-menu",    "ZA-13-4 Next to Mimi: open the research list (X, X, B)"},
+            {StartPoint::LabMable,         "lab-mable",         "ZA-13-3 Lab 3F: walk to Mable (茉蜜姬) at the \"!\""},
+            {StartPoint::ResearchMenu,    "research-menu",    "ZA-13-4 Next to Mable: open Mable's Research (茉蜜姬調查) (X, X, B)"},
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
@@ -1603,31 +1603,31 @@ void AutoStory::take_lab_elevator(SingleSwitchProgramEnvironment& env, ProContro
 
 
 
-void AutoStory::walk_to_mimi(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    env.log("Walking to Mimi on 3F.");
+void AutoStory::walk_to_mable(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Walking to Mable on 3F.");
 
     //  There is a desk right in front of the elevator. Go around it to the
     //  left first.
     pbf_move_left_joystick(context, {-0.7, 0.7}, 1200ms, 300ms);
 
-    WalkResult result = walk_to_quest_marker(env, context, "Mimi", false);
+    WalkResult result = walk_to_quest_marker(env, context, "Mable", false);
     if (result == WalkResult::Prompt){
         //  Next to her before the scene started: talk.
         pbf_press_button(context, BUTTON_A, 160ms, 840ms);
     }
-    clear_dialogs(env, context, "Mimi", true);
+    clear_dialogs(env, context, "Mable", true);
 }
 
 
 
 void AutoStory::open_research_list(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    env.log("Opening Mimi's research list.");
+    env.log("Opening Mable's Research (茉蜜姬調查).");
     env.console.overlay().add_log("Menu: research list");
 
     pbf_press_button(context, BUTTON_X, 160ms, 1840ms);    //  main menu
-    pbf_press_button(context, BUTTON_X, 160ms, 2840ms);    //  reward list (Mimi's research)
+    pbf_press_button(context, BUTTON_X, 160ms, 2840ms);    //  reward list (Mable's research)
 
-    //  On the research list, Mimi talks and the reward card pops up. Both
+    //  On the research list, Mable talks and the reward card pops up. Both
     //  have a green "next" chevron and need A. Once nothing needs A for a
     //  while, press B to back out, until the menu is closed (overworld HUD or
     //  the story starting).
@@ -1896,9 +1896,9 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         take_lab_elevator(env, context);
         clear_dialogs(env, context, "3F story", true);
     }
-    if (start <= StartPoint::LabMimi){
-        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to Mimi.");
-        walk_to_mimi(env, context);
+    if (start <= StartPoint::LabMable){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to Mable.");
+        walk_to_mable(env, context);
     }
     open_research_list(env, context);
 
