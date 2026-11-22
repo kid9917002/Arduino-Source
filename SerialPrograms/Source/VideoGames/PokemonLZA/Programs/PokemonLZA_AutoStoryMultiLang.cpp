@@ -100,8 +100,6 @@ const char* MACRO_FIRST_CATCH       = "ZA-12-1-捕捉1.json";
 const char* MACRO_AFTER_BUNNELBY    = "ZA-12-3-掘掘兔捕捉結束劇情.json";
 //  Walking routes. Each ends standing still, facing the target.
 const char* MACRO_WALK_TO_SCATTERBUG = "ZA-12-4-走向粉蝶蟲.json";
-const char* MACRO_WALK_TO_WEEDLE    = "ZA-12-5-走向獨角蟲.json";
-const char* MACRO_WALK_TO_GATE      = "ZA-12-6-走向大門.json";
 
 //  Wild Zone 1 spots for minimap navigation: the player's position relative
 //  to the "1" zone marker on the minimap, in frame widths (x east, y south).
@@ -239,30 +237,6 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         "塔:ㄊㄚˇ",
         "塔:ㄊㄚˇ"
     )
-    , WILD_ZONE_WALK(
-        "<b>Wild Zone Walking (ZA-12-5 / ZA-12-6):</b><br>"
-        "Minimap navigation finds the player's position from the \"1\" zone marker on the "
-        "minimap and the camera direction from the view cone, then steers to Weedle and to "
-        "the gate. Recorded macros play ZA-12-5 / ZA-12-6 instead.",
-        {
-            {WildZoneWalk::MinimapNavigation, "minimap", "Minimap navigation"},
-            {WildZoneWalk::RecordedMacros,    "macros",  "Recorded macros (ZA-12-5 / ZA-12-6)"},
-        },
-        LockMode::LOCK_WHILE_RUNNING,
-        WildZoneWalk::MinimapNavigation
-    )
-    , CAMERA_MODE(
-        "<b>Camera Mode:</b><br>"
-        "Catching turns the camera toward the target, so normal runs face the camera north "
-        "before the ZA-12-5 / ZA-12-6 walks. Record those two macros starting from north too: "
-        "pick the second choice, run once, then start recording.",
-        {
-            {CameraMode::FaceNorthBeforeWalks, "face-north-before-walks", "Face north before each walk (ZA-12-5 / 12-6)"},
-            {CameraMode::OnlyFaceNorthAndStop, "only-face-north",         "Only face north, then stop (for recording)"},
-        },
-        LockMode::LOCK_WHILE_RUNNING,
-        CameraMode::FaceNorthBeforeWalks
-    )
     , CHARACTER(
         "<b>Character Look:</b><br>"
         "Which portrait to pick on the LOOKS screen.",
@@ -303,8 +277,6 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     PA_ADD_OPTION(GAME_LANGUAGE);
     PA_ADD_OPTION(CHARACTER_NAME);
     PA_ADD_OPTION(START_POINT);
-    PA_ADD_OPTION(WILD_ZONE_WALK);
-    PA_ADD_OPTION(CAMERA_MODE);
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
@@ -654,109 +626,6 @@ void AutoStoryMultiLang::run_trainer_battle(
 
 
 
-void AutoStoryMultiLang::face_camera_north(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    env.log("Turning the camera to face north.");
-    env.console.overlay().add_log("Face North");
-
-    const double TOLERANCE = 6.0;
-
-    //  Signed degrees of heading change per millisecond of right stick
-    //  pushed right. Starts as a guess and is re-measured after each push.
-    double rate = 0.15;
-
-    auto wrap = [](double degrees){
-        while (degrees > 180){
-            degrees -= 360;
-        }
-        while (degrees <= -180){
-            degrees += 360;
-        }
-        return degrees;
-    };
-
-    //  Median of 3 reads to ride out icons passing over the minimap.
-    auto read_heading = [&](double& heading) -> bool{
-        double reads[3] = {0, 0, 0};
-        int count = 0;
-        for (int c = 0; c < 6 && count < 3; c++){
-            context.wait_for_all_requests();
-            double value = 0;
-            if (read_camera_heading(env.console.video().snapshot(), value)){
-                reads[count++] = value;
-            }
-            context.wait_for(100ms);
-        }
-        if (count == 0){
-            return false;
-        }
-        //  Median on the circle: pick the read closest to the others.
-        int best = 0;
-        double best_cost = 1e9;
-        for (int i = 0; i < count; i++){
-            double cost = 0;
-            for (int j = 0; j < count; j++){
-                cost += std::abs(wrap(reads[i] - reads[j]));
-            }
-            if (cost < best_cost){
-                best_cost = cost;
-                best = i;
-            }
-        }
-        heading = reads[best];
-        return true;
-    };
-
-    double heading = 0;
-    int read_failures = 0;
-    for (int iteration = 0; iteration < 24; iteration++){
-        if (!read_heading(heading)){
-            //  An icon or a popup may be covering the minimap, or the cone
-            //  may be over colors it blends into. Turn a little and retry.
-            read_failures++;
-            env.log("Unable to read the minimap view cone. Turning a bit and retrying.", COLOR_RED);
-            if (read_failures > 6){
-                OperationFailedExceptionWithScreenshot::fire(
-                    ErrorReportMode::NO_ERROR_REPORT,
-                    "face_camera_north(): Unable to read the minimap view cone.",
-                    env.console
-                );
-            }
-            pbf_move_right_joystick(context, {1, 0}, 250ms, 500ms);
-            continue;
-        }
-
-        double error = wrap(0 - heading);
-        env.log("Camera heading: " + std::to_string((int)heading) + " degrees");
-        if (std::abs(error) <= TOLERANCE){
-            env.log("Camera faces north.", COLOR_BLUE);
-            return;
-        }
-
-        //  Push right (+x) to change the heading by +rate per ms.
-        double push_ms = std::abs(error / rate);
-        push_ms = std::max(40.0, std::min(push_ms, 600.0));
-        double direction = (error / rate) > 0 ? 1.0 : -1.0;
-        pbf_move_right_joystick(
-            context, {direction, 0},
-            Milliseconds((int64_t)push_ms), 400ms
-        );
-
-        //  Re-measure the rate from what actually happened.
-        double after = 0;
-        if (read_heading(after)){
-            double change = wrap(after - heading);
-            if (std::abs(change) >= 3){
-                rate = change / (direction * push_ms);
-            }
-        }
-    }
-
-    OperationFailedExceptionWithScreenshot::fire(
-        ErrorReportMode::NO_ERROR_REPORT,
-        "face_camera_north(): Unable to turn the camera to face north.",
-        env.console
-    );
-}
 
 
 
@@ -2497,8 +2366,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     assert_16_9_720p_min(env.logger(), env.console);
 
     const StartPoint start = START_POINT.get();
-    const bool from_beginning = start <= StartPoint::CreateCharacter &&
-        CAMERA_MODE.get() != CameraMode::OnlyFaceNorthAndStop;
+    const bool from_beginning = start <= StartPoint::CreateCharacter;
 
     //  Connect the controller.
     if (START_LOCATION.start_in_grip_menu()){
@@ -2511,12 +2379,6 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         if (from_beginning){
             go_home(env.console, context);
         }
-    }
-
-    if (CAMERA_MODE.get() == CameraMode::OnlyFaceNorthAndStop){
-        env.log("Camera Mode is \"Only face north, then stop\". Not running the story.", COLOR_BLUE);
-        face_camera_north(env, context);
-        return;
     }
 
     //  ZA-00: start the game, pick the language, create the character.
@@ -2677,40 +2539,29 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     }
     if (start <= StartPoint::CatchWeedle){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
-        if (WILD_ZONE_WALK.get() == WildZoneWalk::MinimapNavigation){
-            navigate_by_minimap(env, context, "Weedle spot", WEEDLE_SPOT_X, WEEDLE_SPOT_Y, 0.004);
-        }else{
-            //  Catching Scatterbug turned the camera. Reset it first.
-            face_camera_north(env, context);
-            run_macro(env, context, MACRO_WALK_TO_WEEDLE);
-        }
+        navigate_by_minimap(env, context, "Weedle spot", WEEDLE_SPOT_X, WEEDLE_SPOT_Y, 0.004);
         catch_wild_pokemon(env, context, "weedle", "Weedle");
     }
 
     //  ZA-12: leave Wild Zone 1.
     if (start <= StartPoint::LeaveWildZone){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
-        if (WILD_ZONE_WALK.get() == WildZoneWalk::MinimapNavigation){
-            std::pair<double, double> stick = navigate_by_minimap(
-                env, context, "Gate", GATE_SPOT_X, GATE_SPOT_Y, 0.004
-            );
+        std::pair<double, double> stick = navigate_by_minimap(
+            env, context, "Gate", GATE_SPOT_X, GATE_SPOT_Y, 0.004
+        );
 
-            //  Standing on the gate marker. If the exit prompt is not up yet,
-            //  keep going the same way a little at a time (a few tries; then
-            //  leave_wild_zone() presses A anyway).
-            const ImageFloatBox PROMPT_BOX(0.25, 0.0, 0.5, 0.85);
-            for (int c = 0; c < 3; c++){
-                context.wait_for_all_requests();
-                ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
-                if (wait_until(env.console, context, 1000ms, {prompt}) == 0){
-                    break;
-                }
-                env.log("No exit prompt yet. Stepping toward the gate.");
-                pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
+        //  Standing on the gate marker. If the exit prompt is not up yet,
+        //  keep going the same way a little at a time (a few tries; then
+        //  leave_wild_zone() presses A anyway).
+        const ImageFloatBox PROMPT_BOX(0.25, 0.0, 0.5, 0.85);
+        for (int c = 0; c < 3; c++){
+            context.wait_for_all_requests();
+            ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
+            if (wait_until(env.console, context, 1000ms, {prompt}) == 0){
+                break;
             }
-        }else{
-            face_camera_north(env, context);
-            run_macro(env, context, MACRO_WALK_TO_GATE);
+            env.log("No exit prompt yet. Stepping toward the gate.");
+            pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
         }
         leave_wild_zone(env, context);
     }

@@ -107,18 +107,6 @@ public:
         ResearchMenu,       //  ZA-13-4, next to Mable: X, X (research list), B out
     };
 
-    //  How to get around Wild Zone 1 after catching Scatterbug.
-    enum class WildZoneWalk{
-        MinimapNavigation,  //  steer by the minimap (position + camera heading)
-        RecordedMacros,     //  play ZA-12-5 / ZA-12-6 as recorded
-    };
-
-    //  Camera handling for the Wild Zone walks.
-    enum class CameraMode{
-        FaceNorthBeforeWalks,   //  normal run: face north before ZA-12-5 / ZA-12-6
-        OnlyFaceNorthAndStop,   //  only face north, then stop (for recording)
-    };
-
     //  Game language. Order = the in-game LANGUAGE screen, left column top to
     //  bottom, then right column.
     enum class GameLanguage{
@@ -185,10 +173,6 @@ private:
     //  Press A on the "A 離開" prompt at the Wild Zone gate.
     void leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
-    //  Turn the camera (right stick) until the minimap view cone points
-    //  north. Catching turns the camera toward the target, so this makes the
-    //  walking macros start from the same direction every time.
-    void face_camera_north(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
     //  Hold ZL to lock on and tap ZR to throw a ball.
     void throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
@@ -248,8 +232,6 @@ private:
     SimpleIntegerOption<uint8_t> PROFILE;
     EnumDropdownOption<GameLanguage> GAME_LANGUAGE;
     StringOption CHARACTER_NAME;
-    EnumDropdownOption<WildZoneWalk> WILD_ZONE_WALK;
-    EnumDropdownOption<CameraMode> CAMERA_MODE;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;
