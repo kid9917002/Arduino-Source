@@ -2842,9 +2842,37 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
                 return true;
             }
         }
-        //  Whole reading typed: look at the next pages (R).
-        for (int page = 0; page < 4; page++){
+        //  Whole reading typed and not on the first page: page through the
+        //  candidates. R only pages while the cursor is on the candidate bar;
+        //  moving right past the last candidate also scrolls.
+        auto read_first = [&]() -> std::string{
+            context.wait_for_all_requests();
+            context.wait_for(300ms);
+            VideoSnapshot snapshot = env.console.video().snapshot();
+            ImageFloatBox box(CAND_X0 - CAND_PITCH / 2, CAND_Y - 0.028, CAND_PITCH * 3, 0.056);
+            return trim_spaces(OCR::ocr_read(candidate_language, extract_box_reference(snapshot, box)));
+        };
+        for (int c = 0; c < 6; c++){
+            const KeyboardKey* key = nullptr;
+            int bar_index = -1;
+            if (read_cursor(key, bar_index) && key == nullptr){
+                break;
+            }
+            pbf_press_dpad(context, DPAD_UP, 80ms, 220ms);
+        }
+        for (int page = 0; page < 12; page++){
+            std::string before = read_first();
             pbf_press_button(context, BUTTON_R, 80ms, 320ms);
+            if (read_first() == before){
+                //  R did nothing: walk right past the end of the list.
+                for (int c = 0; c < CAND_COUNT + 1; c++){
+                    pbf_press_dpad(context, DPAD_RIGHT, 80ms, 170ms);
+                }
+                if (read_first() == before){
+                    env.log("No more candidate pages.");
+                    break;
+                }
+            }
             int index = find_candidate(character);
             if (index >= 0){
                 env.log("Found " + character + " on page " + std::to_string(page + 2) + ".", COLOR_BLUE);
@@ -2853,9 +2881,10 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
                 return true;
             }
         }
-        //  Not this reading: delete what was typed.
+        //  Not this reading: delete what was typed (only the typed symbols,
+        //  so the characters already entered stay).
         back_to_keys();
-        for (size_t c = 0; c < typed + 1; c++){
+        for (size_t c = 0; c < typed; c++){
             pbf_press_button(context, BUTTON_B, 80ms, 220ms);
         }
         return false;
