@@ -1543,9 +1543,13 @@ void AutoStoryMultiLang::clear_dialogs(
     env.log("Clearing dialogs: " + name);
     env.console.overlay().add_log("Dialog: " + name);
 
-    //  How long the screen must stay quiet: exactly what the caller (or the
-    //  Capture marker in the macro) asked for.
-    const Milliseconds QUIET_NEEDED = quiet;
+    //  Before the starter there is no party bar, so "quiet" only means no
+    //  dialog box: wait a bit longer.
+    //  (Only when waiting for a dialog: a plain "wait for things to settle"
+    //  call keeps the quiet time it asked for.)
+    const Milliseconds QUIET_NEEDED = (m_hud_expected || !require_dialog)
+        ? quiet
+        : std::max<Milliseconds>(quiet, 6000ms);
 
     WallClock start = current_time();
     WallClock last_activity = start;
