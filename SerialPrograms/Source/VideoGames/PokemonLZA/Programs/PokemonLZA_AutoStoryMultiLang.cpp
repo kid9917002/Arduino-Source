@@ -31,6 +31,8 @@
 #include "CommonTools/OCR/OCR_Routines.h"
 #include "CommonTools/OCR/OCR_NumberReader.h"
 #include "CommonTools/Images/SolidColorTest.h"
+#include "CommonTools/Images/BinaryImage_FilterRgb32.h"
+#include "Kernels/Waterfill/Kernels_Waterfill.h"
 #include "CommonFramework/ImageTools/ImageStats.h"
 #include "CommonFramework/Tools/GlobalThreadPools.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
@@ -45,6 +47,7 @@ namespace NintendoSwitch{
 namespace PokemonLZA{
 
 using namespace Pokemon;
+using namespace Kernels::Waterfill;
 
 
 
@@ -389,11 +392,53 @@ void AutoStoryMultiLang::run_macro(
         context.wait_for_all_requests();
     };
 
+    auto entry_ms = [](const JsonObject& entry_object, int64_t default_ms) -> int64_t{
+        const JsonValue* ms = entry_object.get_value("ms");
+        if (ms == nullptr){
+            return default_ms;
+        }
+        if (ms->is_integer()){
+            return ms->to_integer_default(default_ms);
+        }
+        if (ms->is_string()){
+            std::string digits;
+            for (char ch : *ms->to_string()){
+                if (ch >= '0' && ch <= '9'){
+                    digits += ch;
+                }
+            }
+            if (!digits.empty()){
+                return std::stoll(digits);
+            }
+        }
+        return default_ms;
+    };
+
     JsonArray piece;
     size_t markers = 0;
     for (const JsonValue& entry : entries){
         const JsonObject* entry_object = entry.to_object();
         const std::string* buttons = entry_object == nullptr ? nullptr : entry_object->get_string("buttons");
+
+        //  A recorded long + press skips a video. Only do it while a video
+        //  (or scene) is playing: on the overworld, + would open the menu.
+        //  clear_dialogs() may already have skipped it.
+        if (buttons != nullptr && *buttons == "+" && entry_ms(*entry_object, 0) >= 1500){
+            run_piece(std::move(piece));
+            piece = JsonArray();
+            context.wait_for_all_requests();
+            int64_t hold_ms = entry_ms(*entry_object, 0);
+            if (read_party_slot_count(env.console.video().snapshot()) >= 1){
+                env.log("Recorded + (skip video): on the overworld, so not pressing it.", COLOR_BLUE);
+                context.wait_for(Milliseconds(std::min<int64_t>(hold_ms, 1000)));
+            }else{
+                env.log("Recorded + (skip video): holding + for " + std::to_string(hold_ms) + " ms.");
+                pbf_press_button(context, BUTTON_PLUS, Milliseconds(hold_ms), 0ms);
+                context.wait_for_all_requests();
+            }
+            continue;
+        }
+
         if (buttons == nullptr || *buttons != "Capture"){
             piece.push_back(entry.clone());
             continue;
@@ -402,23 +447,7 @@ void AutoStoryMultiLang::run_macro(
         run_piece(std::move(piece));
         piece = JsonArray();
 
-        int64_t quiet_ms = 4000;
-        const JsonValue* ms = entry_object->get_value("ms");
-        if (ms != nullptr){
-            if (ms->is_integer()){
-                quiet_ms = ms->to_integer_default(4000);
-            }else if (ms->is_string()){
-                std::string digits;
-                for (char ch : *ms->to_string()){
-                    if (ch >= '0' && ch <= '9'){
-                        digits += ch;
-                    }
-                }
-                if (!digits.empty()){
-                    quiet_ms = std::stoll(digits);
-                }
-            }
-        }
+        int64_t quiet_ms = entry_ms(*entry_object, 4000);
         quiet_ms = std::max<int64_t>(1000, std::min<int64_t>(quiet_ms, 30000));
 
         markers++;
@@ -1210,7 +1239,121 @@ namespace{
 //  Any dialog box that wants A (story text, item received, tutorial).
 //  These look for the dialog's "next" arrow or box shape, not the text, so
 //  they work in every language.
+//  Story dialog boxes whose shape varies (e.g. the jagged white "shout"
+//  bubble) all have a dark "next" chevron (a hollow V) at the bottom right
+//  of the white box.
+bool white_box_chevron(const ImageViewRGB32& screen){
+    ImageFloatBox search(0.70, 0.86, 0.10, 0.10);
+    ImageViewRGB32 area = extract_box_reference(screen, search);
+    double width = (double)screen.width();
+
+    PackedBinaryMatrix matrix = compress_rgb32_to_binary_range(
+        area,
+        0, 140,
+        0, 140,
+        0, 140
+    );
+    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 15);
+    auto is_dark = [](uint32_t pixel){
+        int r = (pixel >> 16) & 0xff;
+        int g = (pixel >>  8) & 0xff;
+        int b = (pixel >>  0) & 0xff;
+        return r + g + b < 300;
+    };
+    for (const WaterfillObject& object : objects){
+        size_t w = object.width();
+        size_t h = object.height();
+        if ((double)w < 0.010 * width || (double)w > 0.022 * width || h == 0){
+            continue;
+        }
+        double aspect = (double)w / (double)h;
+        if (aspect < 1.3 || aspect > 2.2){
+            continue;
+        }
+        size_t count = 0;
+        size_t top_hits = 0;
+        size_t top_total = 0;
+        size_t bottom_hits = 0;
+        size_t bottom_total = 0;
+        for (size_t y = object.min_y; y < object.max_y; y++){
+            size_t row = y - object.min_y;
+            for (size_t x = object.min_x; x < object.max_x; x++){
+                size_t col = x - object.min_x;
+                bool hit = is_dark(area.pixel(x, y));
+                count += hit ? 1 : 0;
+                if (row < std::max<size_t>(1, h / 4) && col >= w * 35 / 100 && col < w * 65 / 100){
+                    top_total++;
+                    top_hits += hit ? 1 : 0;
+                }
+                if (row >= h * 6 / 10 && col >= w * 4 / 10 && col < w * 6 / 10){
+                    bottom_total++;
+                    bottom_hits += hit ? 1 : 0;
+                }
+            }
+        }
+        double fill = (double)count / (double)(w * h);
+        if (fill < 0.2 || fill > 0.5 || top_total == 0 || bottom_total == 0){
+            continue;
+        }
+        if ((double)top_hits > 0.1 * (double)top_total || (double)bottom_hits < 0.7 * (double)bottom_total){
+            continue;
+        }
+        //  On a white box.
+        size_t x0 = object.min_x > w / 2 ? object.min_x - w / 2 : 0;
+        size_t x1 = std::min(area.width(), object.max_x + w / 2);
+        size_t y0 = object.min_y > h ? object.min_y - h : 0;
+        size_t y1 = std::min(area.height(), object.max_y + h);
+        double sum = 0;
+        size_t background = 0;
+        for (size_t y = y0; y < y1; y++){
+            for (size_t x = x0; x < x1; x++){
+                uint32_t pixel = area.pixel(x, y);
+                if (is_dark(pixel)){
+                    continue;
+                }
+                sum += (double)(((pixel >> 16) & 0xff) + ((pixel >> 8) & 0xff) + (pixel & 0xff));
+                background++;
+            }
+        }
+        if (background > 0 && sum / (double)background >= 550){
+            return true;
+        }
+    }
+    return false;
+}
+
+//  "MAIN MISSION" / "COMPLETE" yellow band across the middle of the screen.
+bool mission_banner(const ImageViewRGB32& screen){
+    const double ROWS[4] = {0.40, 0.44, 0.48, 0.52};
+    size_t width = screen.width();
+    size_t height = screen.height();
+    size_t x0 = (size_t)(0.2 * width);
+    size_t x1 = (size_t)(0.8 * width);
+    for (double ry : ROWS){
+        size_t y = (size_t)(ry * height);
+        size_t yellow = 0;
+        size_t total = 0;
+        for (size_t x = x0; x < x1; x += 2){
+            uint32_t pixel = screen.pixel(x, y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            total++;
+            if (r >= 200 && g >= 150 && b <= 140 && r - b >= 90){
+                yellow++;
+            }
+        }
+        if (total == 0 || yellow * 10 < total * 6){
+            return false;
+        }
+    }
+    return true;
+}
+
 bool dialog_on_screen(const ImageViewRGB32& screen){
+    if (white_box_chevron(screen) || mission_banner(screen)){
+        return true;
+    }
     FlatWhiteDialogDetector flat_white;
     BlueDialogDetector blue;
     TealDialogDetector teal;
@@ -1311,6 +1454,8 @@ void AutoStoryMultiLang::clear_dialogs(
     bool activity_seen = false;     //  a dialog, or the HUD went away
     bool waited_long = false;
     WallClock last_blind_press = start - std::chrono::seconds(10);
+    WallClock last_dialog = start;
+    WallClock last_skip = start - std::chrono::seconds(30);
 
     if (press_first){
         //  Talk to someone / advance the first line.
@@ -1336,6 +1481,7 @@ void AutoStoryMultiLang::clear_dialogs(
             presses++;
             activity_seen = true;
             last_activity = current_time();
+            last_dialog = last_activity;
             continue;
         }
 
@@ -1344,6 +1490,20 @@ void AutoStoryMultiLang::clear_dialogs(
             activity_seen = true;
         }
         CutsceneLetterboxDetector letterbox;
+        if (!hud && !is_black(snapshot, 80, 40) &&
+            current_time() - last_dialog >= 2500ms &&
+            current_time() - last_skip >= 8000ms &&
+            !letterbox.detect(snapshot)
+        ){
+            //  No HUD and no dialog for a while: a video (or a scene with
+            //  nothing to read). Hold + to skip it.
+            env.log("No HUD and no dialog: holding + to skip the video.");
+            pbf_press_button(context, BUTTON_PLUS, 2500ms, 300ms);
+            last_skip = current_time();
+            last_activity = last_skip;
+            activity_seen = true;
+            continue;
+        }
         if (!hud && !is_black(snapshot, 80, 40)){
             //  Story scene without the HUD. Some dialog boxes have no fixed
             //  shape (e.g. the jagged white "shout" bubble), so press A
