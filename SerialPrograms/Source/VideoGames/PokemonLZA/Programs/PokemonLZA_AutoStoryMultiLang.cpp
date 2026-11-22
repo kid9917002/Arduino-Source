@@ -1538,10 +1538,9 @@ void AutoStoryMultiLang::clear_dialogs(
 
         CutsceneLetterboxDetector letterbox_check;
         bool hud = false;
-        if (overworld_hud(snapshot)){
-            hud = true;
-            m_hud_expected = true;
-        }else if (!m_hud_expected){
+        if (m_hud_expected){
+            hud = overworld_hud(snapshot);
+        }else{
             //  No party bar yet (before the starter): no dialog, not black
             //  and no cutscene bars counts as the overworld.
             hud = !is_black(snapshot, 80, 40) && !letterbox_check.detect(snapshot);
@@ -3139,6 +3138,8 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     }
     if (start <= StartPoint::ChooseStarter){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");
+        //  The "which one?" lines must be over before walking to a starter.
+        clear_dialogs(env, context, "Before choosing the starter", false, 4000ms, false, std::chrono::seconds(20));
         run_macro(env, context, starter_macro_filename());
         m_hud_expected = true;
     }
@@ -3240,12 +3241,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "PC / Pokedex.");
         story_dialog(env, context, "ZA-10-1 PC scene", 5230ms, 7182ms);
         run_macro(env, context, MACRO_WALK_TO_PC);
-        //  Pokedex tutorial: dialogs, X (as told), the POKEDEX / menu
-        //  (closed with B), dialogs.
-        story_dialog(env, context, "ZA-10-3 Pokedex tutorial", 0ms, 1300ms);
-        pbf_press_button(context, BUTTON_X, 200ms, 1100ms);
-        clear_dialogs(env, context, "ZA-10-3 after Pokedex", true, 4000ms, false, std::chrono::seconds(20));
-        pbf_wait(context, 4500ms);
+        //  Pokedex tutorial: dialogs, the POKEDEX / menu (closed with B),
+        //  dialogs.
+        story_dialog(env, context, "ZA-10-3 Pokedex tutorial", 0ms, 4500ms);
     }
     if (start <= StartPoint::WildZone1){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Wild Zone 1.");
