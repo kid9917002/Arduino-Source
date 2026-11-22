@@ -67,22 +67,15 @@ const char* MACRO_CHASE_PANCHAM     = "ZA-02-0-追頑皮熊貓4-without-restart.
 const char* MACRO_STARTER_CHIKORITA = "ZA-02-1-選擇御三家(菊草葉).json";
 const char* MACRO_STARTER_TEPIG     = "ZA-02-1-選擇御三家(暖暖豬).json";
 const char* MACRO_STARTER_TOTODILE  = "ZA-02-1-選擇御三家(小鋸鱷).json";
-const char* MACRO_BATTLE_ZONE       = "ZA-03-0-對戰特區前.json";
 const char* MACRO_ESCAPE_0          = "ZA-03-1-逃出對戰特區0.json";
-const char* MACRO_ESCAPE_1          = "ZA-03-1-逃出對戰特區1.json";
-const char* MACRO_ESCAPE_2_1        = "ZA-03-3-逃出對戰特區2-1.json";
 const char* MACRO_ESCAPE_2_2        = "ZA-03-3-逃出對戰特區2-2.json";
 const char* MACRO_ESCAPE_3          = "ZA-03-4-逃出對戰特區3.json";
-const char* MACRO_HOTEL_WALK_0      = "ZA-04-0-走進Z飯店.json";
 const char* MACRO_HOTEL_WALK_1      = "ZA-04-1-走進Z飯店.json";
-const char* MACRO_HOTEL_INTRO       = "ZA-05-0-Z飯店-介紹.json";
 const char* MACRO_HOTEL_AZ_1        = "ZA-05-1-Z飯店-向AZ對話1.json";
-const char* MACRO_HOTEL_AZ_2        = "ZA-05-2-Z飯店-向AZ對話2.json";
 const char* MACRO_HOTEL_ELEVATOR    = "ZA-05-3-Z飯店-走向電梯門口上2F.json";
 const char* MACRO_HOTEL_ROOM        = "ZA-05-4-Z飯店-走進202客房.json";
 const char* MACRO_HOTEL_BED         = "ZA-05-5-Z飯店-202房間走向床邊.json";
 const char* MACRO_HOTEL_DOOR        = "ZA-05-6-Z飯店-202房間走向房門.json";
-const char* MACRO_HOTEL_NIGHT       = "ZA-05-7-Z飯店-晚上劇情.json";
 const char* MACRO_HOTEL_MORNING     = "ZA-05-8-Z飯店-隔天早上起床後出房門到2F電梯門口.json";
 const char* MACRO_ROLL_TUTORIAL     = "ZA-05-9-Z飯店-翻滾教學.json";
 const char* MACRO_ROLL_TO_DOOR      = "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json";
@@ -90,18 +83,13 @@ const char* MACRO_LEAVE_HOTEL       = "ZA-05-11-Z飯店-出ZA飯店.json";
 const char* MACRO_WALK_TO_RIVAL     = "ZA-06-1-走向蓋伊對戰.json";
 const char* MACRO_MAP_TUTORIAL      = "ZA-07-地圖教學.json";
 const char* MACRO_ROCKS_WALK        = "ZA-08-1-往前走觸發岩石劇情.json";
-const char* MACRO_ROCKS_SCENE       = "ZA-08-2-岩石劇情.json";
 const char* MACRO_LADDER            = "ZA-09-1-走向大樓梯子與上梯子.json";
-const char* MACRO_ROOFTOP           = "ZA-09-2-頂樓劇情.json";
 const char* MACRO_JUMP_DOWN         = "ZA-09-3-跳下大樓.json";
-const char* MACRO_PC_SCENE          = "ZA-10-1-往PC前劇情.json";
 const char* MACRO_WALK_TO_PC        = "ZA-10-2-走向PC.json";
 const char* MACRO_POKEDEX_TUTORIAL  = "ZA-10-3-圖鑑教學.json";
 const char* MACRO_WILD_ZONE_1       = "ZA-11-1-走向WildZone1-1.json";
-const char* MACRO_WILD_ZONE_2       = "ZA-11-2-走向WildZone1-2.json";
 const char* MACRO_WILD_ZONE_3       = "ZA-11-3-走向WildZone1-3.json";
 const char* MACRO_FIRST_CATCH       = "ZA-12-1-捕捉1.json";
-const char* MACRO_AFTER_BUNNELBY    = "ZA-12-3-掘掘兔捕捉結束劇情.json";
 //  Walking routes. Each ends standing still, facing the target.
 const char* MACRO_WALK_TO_SCATTERBUG = "ZA-12-4-走向粉蝶蟲.json";
 
@@ -461,6 +449,20 @@ void AutoStoryMultiLang::run_macro(
 
     stats.macros++;
     env.update_stats();
+}
+
+
+
+void AutoStoryMultiLang::story_dialog(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::string& name, Milliseconds wait_before, Milliseconds wait_after
+){
+    //  A step that is only story dialog: talk / advance (A), clear the
+    //  dialogs by detection, then wait like the recorded macro did.
+    context.wait_for_all_requests();
+    context.wait_for(wait_before);
+    clear_dialogs(env, context, name, true, 4000ms, true, std::chrono::seconds(20));
+    context.wait_for(wait_after);
 }
 
 
@@ -3113,12 +3115,12 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  ZA-03: battle zone, escape.
     if (start <= StartPoint::BattleZone){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Battle zone.");
-        run_macro(env, context, MACRO_BATTLE_ZONE);
+        story_dialog(env, context, "ZA-03-0 battle zone", 200ms, 0ms);
     }
     if (start <= StartPoint::EscapeBattleZone){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Escaping the battle zone.");
         run_macro(env, context, MACRO_ESCAPE_0);
-        run_macro(env, context, MACRO_ESCAPE_1);
+        story_dialog(env, context, "ZA-03-1 escape 1", 2000ms, 200ms);
     }
 
     //  ZA-03: waitress battle. Ends on the post-battle dialog.
@@ -3130,7 +3132,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  ZA-03: escape the battle zone.
     if (start <= StartPoint::EscapeBattleZone2){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Escaping the battle zone.");
-        run_macro(env, context, MACRO_ESCAPE_2_1);
+        story_dialog(env, context, "ZA-03-3 escape 2", 500ms, 6700ms);
         run_macro(env, context, MACRO_ESCAPE_2_2);
     }
     if (start <= StartPoint::EscapeBattleZone3){
@@ -3140,16 +3142,16 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  ZA-04: walk into Hotel Z.
     if (start <= StartPoint::WalkIntoHotel){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking into Hotel Z.");
-        run_macro(env, context, MACRO_HOTEL_WALK_0);
+        story_dialog(env, context, "ZA-04-0 Hotel Z", 7397ms, 7845ms);
         run_macro(env, context, MACRO_HOTEL_WALK_1);
     }
 
     //  ZA-05: Hotel Z.
     if (start <= StartPoint::HotelIntro){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Hotel Z.");
-        run_macro(env, context, MACRO_HOTEL_INTRO);
+        story_dialog(env, context, "ZA-05-0 Hotel Z intro", 5687ms, 2191ms);
         run_macro(env, context, MACRO_HOTEL_AZ_1);
-        run_macro(env, context, MACRO_HOTEL_AZ_2);
+        story_dialog(env, context, "ZA-05-2 AZ", 3078ms, 4217ms);
     }
     if (start <= StartPoint::HotelUpstairs){
         run_macro(env, context, MACRO_HOTEL_ELEVATOR);
@@ -3158,7 +3160,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         run_macro(env, context, MACRO_HOTEL_DOOR);
     }
     if (start <= StartPoint::HotelNight){
-        run_macro(env, context, MACRO_HOTEL_NIGHT);
+        story_dialog(env, context, "ZA-05-7 night", 100ms, 2078ms);
     }
     if (start <= StartPoint::HotelMorning){
         run_macro(env, context, MACRO_HOTEL_MORNING);
@@ -3188,23 +3190,23 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     }
     if (start <= StartPoint::RockScene){
         run_macro(env, context, MACRO_ROCKS_WALK);
-        run_macro(env, context, MACRO_ROCKS_SCENE);
+        story_dialog(env, context, "ZA-08-2 rocks", 200ms, 2388ms);
     }
     if (start <= StartPoint::Rooftop){
         run_macro(env, context, MACRO_LADDER);
-        run_macro(env, context, MACRO_ROOFTOP);
+        story_dialog(env, context, "ZA-09-2 rooftop", 200ms, 1017ms);
         run_macro(env, context, MACRO_JUMP_DOWN);
     }
     if (start <= StartPoint::PokemonCenterPC){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "PC / Pokedex.");
-        run_macro(env, context, MACRO_PC_SCENE);
+        story_dialog(env, context, "ZA-10-1 PC scene", 5230ms, 7182ms);
         run_macro(env, context, MACRO_WALK_TO_PC);
         run_macro(env, context, MACRO_POKEDEX_TUTORIAL);
     }
     if (start <= StartPoint::WildZone1){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Wild Zone 1.");
         run_macro(env, context, MACRO_WILD_ZONE_1);
-        run_macro(env, context, MACRO_WILD_ZONE_2);
+        story_dialog(env, context, "ZA-11-2 Wild Zone 1", 50ms, 1686ms);
         run_macro(env, context, MACRO_WILD_ZONE_3);
     }
 
@@ -3220,7 +3222,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         run_capture_battle(env, context);
     }
     if (start <= StartPoint::AfterBunnelby){
-        run_macro(env, context, MACRO_AFTER_BUNNELBY);
+        story_dialog(env, context, "ZA-12-3 after Bunnelby", 91ms, 5000ms);
     }
 
     //  ZA-12: catch Scatterbug and Weedle without battling.

@@ -195,6 +195,13 @@ private:
     //  ZA-00 (multi-language): from Home, close the game, start it with the
     //  chosen user profile, pick the game language on the LANGUAGE screen,
     //  and wait for the LOOKS screen.
+    //  A story step that is only dialog (no walking): wait, clear the dialogs
+    //  by detection, wait. Replaces macros that held only a dialog marker.
+    void story_dialog(
+        SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+        const std::string& name, Milliseconds wait_before, Milliseconds wait_after
+    );
+
     void launch_and_pick_language(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
     //  On the LANGUAGE screen, move to the chosen language and confirm.
