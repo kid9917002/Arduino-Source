@@ -79,6 +79,22 @@ bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar,
 ImageFloatBox locked_target_name_box(const ImageFloatBox& bar);
 
 
+//  Yellow "!" quest marker on the minimap. dx/dy are its offset from the
+//  minimap center (the player) in frame widths (x east, y south). When the
+//  target is off the minimap, the marker sits on the edge in its direction.
+bool find_minimap_quest_marker(const ImageViewRGB32& screen, double& dx, double& dy);
+
+//  Yellow hexagon "!" quest marker floating in the game world (indoors and
+//  outdoors). Ignores the minimap and the quest panel in the top-left corner.
+//  Returns the largest one.
+bool find_world_quest_marker(const ImageViewRGB32& screen, ImageFloatBox& box);
+
+//  Small 3-row choice menu on the right (e.g. the lab elevator). Returns the
+//  row (0, 1, 2) that the green pointer is on, or -1 if no menu is up.
+//  Uses only the green pointer and the white highlight, not the text.
+int read_choice_menu_row(const ImageViewRGB32& screen);
+
+
 class CutsceneLetterboxDetector : public StaticScreenDetector{
 public:
     CutsceneLetterboxDetector(Color color = COLOR_MAGENTA);

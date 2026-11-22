@@ -13,7 +13,10 @@
  *    ZA-07 .. ZA-11  map tutorial, rocks, rooftop, PC, Pokedex, Wild Zone 1
  *    ZA-12  first catch, Bunnelby battle + catch (vision), catch Scatterbug
  *           and Weedle without battling (vision), leave Wild Zone 1 (vision)
- *  Stops after leaving Wild Zone 1.
+ *  ZA-13  walk to the Pokemon lab (minimap "!"), elevator to 3F, talk to
+ *         Mimi (world "!"), open the research list in the menu, close it.
+ *  Dialogs in the lab part are cleared by vision, not recorded A presses,
+ *  so it works in any game language.
  *
  *  The button sequences between vision checkpoints are Turbo Macro JSON
  *  files read from a user-selected folder, so routes can be re-recorded
@@ -29,6 +32,7 @@
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
+#include "NintendoSwitch/Options/NintendoSwitch_GoHomeWhenDoneOption.h"
 #include "VideoGames/PokemonLZA/Options/PokemonLZA_BattleAIOption.h"
 
 namespace PokemonAutomation{
@@ -93,6 +97,10 @@ public:
         CatchScatterbug,    //  ZA-12-4, on ZA-12-4-捕捉粉蝶蟲前
         CatchWeedle,        //  ZA-12-5, right after catching Scatterbug
         LeaveWildZone,      //  ZA-12-6, right after catching Weedle
+        WalkToLab,          //  ZA-13-1, outside Wild Zone 1: walk to the lab and go in
+        LabElevator,        //  ZA-13-2, lab 1F (saved): elevator to 3F, 3F story
+        LabMimi,            //  ZA-13-3, lab 3F (saved): walk to the "!" and the story
+        ResearchMenu,       //  ZA-13-4, next to Mimi: X, X (research list), B out
     };
 
     //  How to get around Wild Zone 1 after catching Scatterbug.
@@ -168,6 +176,34 @@ private:
 
     std::string starter_macro_filename() const;
 
+    //  Lab part (ZA-13). No recorded macros: steer by the yellow "!" quest
+    //  marker and clear dialogs by detecting the dialog boxes.
+    enum class WalkResult{
+        Dialog,     //  a dialog / story started
+        Prompt,     //  an "A" prompt is up next to the player at the target
+    };
+
+    //  Press A while a dialog is up, until the overworld HUD is back and no
+    //  dialog shows for a few seconds. If require_dialog is set, keep waiting
+    //  (up to a minute) until at least one dialog has been seen.
+    void clear_dialogs(
+        SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+        const std::string& name, bool require_dialog
+    );
+
+    //  Walk toward the yellow "!" marker. Outdoors it steers by the minimap
+    //  marker and camera heading; indoors (no minimap) it turns the camera to
+    //  put the world marker in the middle of the screen and walks forward.
+    WalkResult walk_to_quest_marker(
+        SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+        const std::string& name, bool outdoors
+    );
+
+    void walk_to_lab(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+    void take_lab_elevator(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+    void walk_to_mimi(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+    void open_research_list(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+
 
 private:
     StringOption MACRO_FOLDER;
@@ -178,6 +214,7 @@ private:
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;
+    GoHomeWhenDoneOption GO_HOME_WHEN_DONE;
 
     EventNotificationOption NOTIFICATION_STATUS_UPDATE;
     EventNotificationsOption NOTIFICATIONS;

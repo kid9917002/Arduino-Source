@@ -383,6 +383,221 @@ ImageFloatBox locked_target_name_box(const ImageFloatBox& bar){
 }
 
 
+namespace{
+
+//  Average color of the pixels in an object's bounding box that pass the
+//  same range filter the object was found with.
+bool average_in_range(
+    const ImageViewRGB32& area, const WaterfillObject& object,
+    uint32_t rmin, uint32_t rmax, uint32_t gmin, uint32_t gmax, uint32_t bmin, uint32_t bmax,
+    double& ar, double& ag, double& ab
+){
+    double sum_r = 0;
+    double sum_g = 0;
+    double sum_b = 0;
+    size_t count = 0;
+    for (size_t y = object.min_y; y < object.max_y; y++){
+        for (size_t x = object.min_x; x < object.max_x; x++){
+            uint32_t pixel = area.pixel(x, y);
+            uint32_t r = (pixel >> 16) & 0xff;
+            uint32_t g = (pixel >>  8) & 0xff;
+            uint32_t b = (pixel >>  0) & 0xff;
+            if (r < rmin || r > rmax || g < gmin || g > gmax || b < bmin || b > bmax){
+                continue;
+            }
+            sum_r += r;
+            sum_g += g;
+            sum_b += b;
+            count++;
+        }
+    }
+    if (count == 0){
+        return false;
+    }
+    ar = sum_r / count;
+    ag = sum_g / count;
+    ab = sum_b / count;
+    return true;
+}
+
+//  Yellow blobs (quest "!" markers). Bright yellow, not white.
+std::vector<WaterfillObject> find_yellow_objects(const ImageViewRGB32& screen){
+    std::vector<WaterfillObject> ret;
+    double width = (double)screen.width();
+    PackedBinaryMatrix matrix = compress_rgb32_to_binary_range(
+        screen,
+        200, 255,
+        170, 255,
+        0, 150
+    );
+    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 20);
+    double min_area = 0.00004 * width * width;
+    for (WaterfillObject& object : objects){
+        if ((double)object.area < min_area){
+            continue;
+        }
+        double ar = 0;
+        double ag = 0;
+        double ab = 0;
+        if (!average_in_range(screen, object, 200, 255, 170, 255, 0, 150, ar, ag, ab)){
+            continue;
+        }
+        if (ar - ab < 90 || std::abs(ar - ag) > 55){
+            continue;
+        }
+        ret.emplace_back(std::move(object));
+    }
+    return ret;
+}
+
+const double MINIMAP_CENTER_X = 0.0960;
+const double MINIMAP_CENTER_Y = 0.1655;
+
+}
+
+
+
+bool find_minimap_quest_marker(const ImageViewRGB32& screen, double& dx, double& dy){
+    double width = (double)screen.width();
+    double height = (double)screen.height();
+    if (width < 100 || height < 100){
+        return false;
+    }
+    double best_area = 0;
+    for (const WaterfillObject& object : find_yellow_objects(screen)){
+        double ox = object.center_of_gravity_x() / width - MINIMAP_CENTER_X;
+        double oy = (object.center_of_gravity_y() / height - MINIMAP_CENTER_Y) * height / width;
+        if (std::sqrt(ox * ox + oy * oy) > 0.058){
+            continue;
+        }
+        if ((double)object.area > best_area){
+            best_area = (double)object.area;
+            dx = ox;
+            dy = oy;
+        }
+    }
+    return best_area > 0;
+}
+
+bool find_world_quest_marker(const ImageViewRGB32& screen, ImageFloatBox& box){
+    double width = (double)screen.width();
+    double height = (double)screen.height();
+    if (width < 100 || height < 100){
+        return false;
+    }
+    double best_area = 0;
+    for (const WaterfillObject& object : find_yellow_objects(screen)){
+        double cx = (object.min_x + object.max_x) / 2.0 / width;
+        double cy = (object.min_y + object.max_y) / 2.0 / height;
+        double ox = cx - MINIMAP_CENTER_X;
+        double oy = (cy - MINIMAP_CENTER_Y) * height / width;
+        if (std::sqrt(ox * ox + oy * oy) <= 0.062){
+            continue;   //  minimap
+        }
+        if (cx < 0.22 && cy < 0.36){
+            continue;   //  quest panel
+        }
+        if (cy > 0.80){
+            continue;   //  bottom HUD
+        }
+        double w = (double)object.width();
+        double h = (double)object.height();
+        if (w < 0.013 * width || w > 0.030 * width){
+            continue;
+        }
+        if (w < 0.75 * h || w > 1.33 * h){
+            continue;
+        }
+        if ((double)object.area < 0.4 * w * h){
+            continue;
+        }
+        if ((double)object.area > best_area){
+            best_area = (double)object.area;
+            box = ImageFloatBox(object.min_x / width, object.min_y / height, w / width, h / height);
+        }
+    }
+    return best_area > 0;
+}
+
+int read_choice_menu_row(const ImageViewRGB32& screen){
+    const double ROW0_Y = 0.559;
+    const double ROW_PITCH = 0.0735;
+
+    double width = (double)screen.width();
+    double height = (double)screen.height();
+    if (width < 100 || height < 100){
+        return -1;
+    }
+
+    ImageFloatBox search(0.55, 0.40, 0.35, 0.45);
+    ImageViewRGB32 area = extract_box_reference(screen, search);
+    size_t off_x = (size_t)(search.x * width);
+    size_t off_y = (size_t)(search.y * height);
+
+    //  Green pointer: yellow-green triangle left of the highlighted row.
+    PackedBinaryMatrix matrix = compress_rgb32_to_binary_range(
+        area,
+        100, 215,
+        170, 255,
+        0, 110
+    );
+    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 20);
+
+    double best_area = 0;
+    double best_cy = 0;
+    double best_right = 0;
+    for (const WaterfillObject& object : objects){
+        if ((double)object.area < 0.0001 * width * width){
+            continue;
+        }
+        double ar = 0;
+        double ag = 0;
+        double ab = 0;
+        if (!average_in_range(area, object, 100, 215, 170, 255, 0, 110, ar, ag, ab)){
+            continue;
+        }
+        if (ag < ar + 15 || ag - ab < 90){
+            continue;
+        }
+        if ((double)object.area > best_area){
+            best_area = (double)object.area;
+            best_cy = (off_y + (object.min_y + object.max_y) / 2.0) / height;
+            best_right = (off_x + object.max_x) / width;
+        }
+    }
+    if (best_area <= 0){
+        return -1;
+    }
+
+    //  The highlighted row is white right of the pointer.
+    ImageFloatBox row(best_right + 0.008, best_cy - 0.015, 0.10, 0.03);
+    ImageViewRGB32 row_image = extract_box_reference(screen, row);
+    size_t white = 0;
+    size_t total = 0;
+    for (size_t y = 0; y < row_image.height(); y++){
+        for (size_t x = 0; x < row_image.width(); x++){
+            uint32_t pixel = row_image.pixel(x, y);
+            uint32_t r = (pixel >> 16) & 0xff;
+            uint32_t g = (pixel >>  8) & 0xff;
+            uint32_t b = (pixel >>  0) & 0xff;
+            total++;
+            if (r >= 200 && g >= 200 && b >= 200){
+                white++;
+            }
+        }
+    }
+    if (total == 0 || white < total * 4 / 10){
+        return -1;
+    }
+
+    double index = (best_cy - ROW0_Y) / ROW_PITCH;
+    if (index < -0.5 || index > 2.5){
+        return -1;
+    }
+    return (int)std::lround(index);
+}
+
+
 
 CutsceneLetterboxDetector::CutsceneLetterboxDetector(Color color)
     : m_color(color)

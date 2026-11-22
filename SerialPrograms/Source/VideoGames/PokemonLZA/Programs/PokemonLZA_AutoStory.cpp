@@ -109,7 +109,8 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         STRING_POKEMON + " LZA", "Auto Story",
         "",
         "Play the opening of the story from a new save: create the character, "
-        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat Urbain, catch Bunnelby, Scatterbug and Weedle, and leave Wild Zone 1.",
+        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat Urbain, catch Bunnelby, Scatterbug and Weedle, "
+        "leave Wild Zone 1, go to the lab and open Mimi's research list.",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -181,6 +182,10 @@ AutoStory::AutoStory()
             {StartPoint::CatchScatterbug, "scatterbug",       "ZA-12-4 Walk to + catch Scatterbug (粉蝶蟲)"},
             {StartPoint::CatchWeedle,     "weedle",           "ZA-12-5 Walk to + catch Weedle (獨角蟲)"},
             {StartPoint::LeaveWildZone,   "leave-wild-zone",  "ZA-12-6 Walk to the gate and leave Wild Zone 1"},
+            {StartPoint::WalkToLab,       "walk-to-lab",      "ZA-13-1 Walk to the lab and go in (outside Wild Zone 1)"},
+            {StartPoint::LabElevator,     "lab-elevator",     "ZA-13-2 Lab 1F: elevator to 3F (所長室)"},
+            {StartPoint::LabMimi,         "lab-mimi",         "ZA-13-3 Lab 3F: walk to the \"!\" (茉蜜姬)"},
+            {StartPoint::ResearchMenu,    "research-menu",    "ZA-13-4 Next to Mimi: open the research list (X, X, B)"},
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
@@ -241,6 +246,7 @@ AutoStory::AutoStory()
         LockMode::LOCK_WHILE_RUNNING,
         Starter::Tepig
     )
+    , GO_HOME_WHEN_DONE(false)
     , NOTIFICATION_STATUS_UPDATE("Status Update", true, false, std::chrono::seconds(3600))
     , NOTIFICATIONS({
         &NOTIFICATION_STATUS_UPDATE,
@@ -258,6 +264,7 @@ AutoStory::AutoStory()
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
+    PA_ADD_OPTION(GO_HOME_WHEN_DONE);
     PA_ADD_OPTION(NOTIFICATIONS);
 }
 
@@ -1099,6 +1106,438 @@ void AutoStory::run_capture_battle(SingleSwitchProgramEnvironment& env, ProContr
 
 
 
+namespace{
+
+//  Any dialog box that wants A (story text, item received, tutorial).
+//  These look for the dialog's "next" arrow or box shape, not the text, so
+//  they work in every language.
+bool dialog_on_screen(const ImageViewRGB32& screen){
+    FlatWhiteDialogDetector flat_white;
+    BlueDialogDetector blue;
+    TealDialogDetector teal;
+    LightBlueDialogDetector light_blue;
+    TransparentBattleDialogDetector transparent;
+    ItemReceiveDetector item;
+    TutorialWindowDetector tutorial;
+    return flat_white.detect(screen)
+        || blue.detect(screen)
+        || teal.detect(screen)
+        || light_blue.detect(screen)
+        || transparent.detect(screen)
+        || item.detect(screen)
+        || tutorial.detect(screen);
+}
+
+//  The "A" prompt (進入 / 搭電梯 / 搭話) floats right next to the player.
+const ImageFloatBox LAB_PROMPT_BOX(0.35, 0.25, 0.45, 0.55);
+
+bool a_prompt_on_screen(const ImageViewRGB32& screen){
+    ButtonDetector prompt(COLOR_RED, ButtonType::ButtonA, LAB_PROMPT_BOX);
+    return prompt.detect(screen);
+}
+
+}
+
+
+
+void AutoStory::clear_dialogs(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::string& name, bool require_dialog
+){
+    env.log("Clearing dialogs: " + name);
+    env.console.overlay().add_log("Dialog: " + name);
+
+    const Milliseconds QUIET_NEEDED = 4000ms;
+
+    WallClock start = current_time();
+    WallClock last_activity = start;
+    size_t presses = 0;
+    bool waited_long = false;
+
+    while (true){
+        WallClock now = current_time();
+        if (now - start > std::chrono::minutes(6)){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "clear_dialogs(): Dialogs did not end after 6 minutes: " + name,
+                env.console
+            );
+        }
+
+        context.wait_for_all_requests();
+        VideoSnapshot snapshot = env.console.video().snapshot();
+
+        if (dialog_on_screen(snapshot)){
+            pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+            presses++;
+            last_activity = current_time();
+            continue;
+        }
+
+        CutsceneLetterboxDetector letterbox;
+        if (letterbox.detect(snapshot) || read_party_slot_count(snapshot) < 1){
+            //  Cutscene, fade, loading or a menu: not done yet.
+            last_activity = current_time();
+        }else if (now - last_activity >= QUIET_NEEDED){
+            if (presses > 0 || !require_dialog || waited_long){
+                env.log(
+                    "Dialogs cleared (" + std::to_string(presses) + " A presses): " + name,
+                    COLOR_BLUE
+                );
+                return;
+            }
+            if (now - start > std::chrono::seconds(60)){
+                env.log("No dialog showed up in a minute. Moving on: " + name, COLOR_RED);
+                waited_long = true;
+            }
+        }
+        context.wait_for(250ms);
+    }
+}
+
+
+
+AutoStory::WalkResult AutoStory::walk_to_quest_marker(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::string& name, bool outdoors
+){
+    env.log("Walking to the quest marker: " + name);
+    env.console.overlay().add_log("Go to " + name);
+
+    const double PI = 3.14159265358979323846;
+
+    struct State{
+        bool dialog = false;
+        bool prompt = false;
+        bool minimap = false;
+        double mdx = 0;
+        double mdy = 0;
+        double heading = 0;
+        bool world = false;
+        ImageFloatBox world_box;
+    };
+    auto read_state = [&](){
+        context.wait_for_all_requests();
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        State state;
+        state.dialog = dialog_on_screen(snapshot);
+        state.prompt = a_prompt_on_screen(snapshot);
+        if (outdoors){
+            state.minimap = find_minimap_quest_marker(snapshot, state.mdx, state.mdy)
+                && read_camera_heading(snapshot, state.heading);
+        }
+        state.world = find_world_quest_marker(snapshot, state.world_box);
+        return state;
+    };
+
+    int lost = 0;
+    int stuck = 0;
+    double stick_x = 0;
+    double stick_y = 1;
+
+    for (int step = 0; step < 200; step++){
+        State state = read_state();
+        if (state.dialog){
+            env.log("Dialog on the way to " + name + ".");
+            return WalkResult::Dialog;
+        }
+
+        double mdist = state.minimap
+            ? std::sqrt(state.mdx * state.mdx + state.mdy * state.mdy)
+            : 1.0;
+
+        if (state.prompt){
+            //  Outdoors, ignore prompts from people on the street: only stop
+            //  when the marker is close.
+            if (!outdoors || mdist <= 0.03 || (!state.minimap && state.world)){
+                env.log("A prompt at " + name + ".", COLOR_BLUE);
+                return WalkResult::Prompt;
+            }
+        }
+
+        //  Outdoors and not close yet: steer by the minimap.
+        if (state.minimap && (mdist > 0.006 || !state.world)){
+            lost = 0;
+            double bearing = std::atan2(state.mdx, -state.mdy) * 180.0 / PI;
+            double relative = (bearing - state.heading) * PI / 180.0;
+            if (stuck > 0){
+                relative += (stuck % 2 == 1 ? 1 : -1) * PI / 2;
+            }
+            stick_x = std::sin(relative);
+            stick_y = std::cos(relative);
+            double push_ms = stuck > 0 ? 500.0 : mdist / 0.00002 * 0.5;
+            push_ms = std::max(200.0, std::min(push_ms, 900.0));
+            env.log(
+                name + ": minimap marker (" + std::to_string(state.mdx) + ", " + std::to_string(state.mdy) +
+                "), heading " + std::to_string((int)state.heading) + ", push " + std::to_string((int)push_ms) + " ms"
+            );
+            pbf_move_left_joystick(context, {stick_x, stick_y}, Milliseconds((int64_t)push_ms), 200ms);
+
+            State after = read_state();
+            if (after.minimap && stuck == 0 && push_ms >= 300){
+                double moved = std::sqrt(
+                    (after.mdx - state.mdx) * (after.mdx - state.mdx) +
+                    (after.mdy - state.mdy) * (after.mdy - state.mdy)
+                );
+                //  When the marker is pinned to the minimap edge it only moves
+                //  sideways, so only count "stuck" when it is on the map.
+                if (moved < 0.0008 && mdist < 0.05){
+                    stuck++;
+                    env.log("Barely moved. Going around (" + std::to_string(stuck) + ").", COLOR_RED);
+                }
+            }else if (stuck > 0){
+                stuck = (stuck >= 12) ? stuck : 0;
+            }
+            if (stuck >= 12){
+                OperationFailedExceptionWithScreenshot::fire(
+                    ErrorReportMode::NO_ERROR_REPORT,
+                    "walk_to_quest_marker(): Stuck on the way to " + name + ".",
+                    env.console
+                );
+            }
+            continue;
+        }
+
+        //  Steer by the marker in the world: turn the camera to put it in the
+        //  middle, then walk forward.
+        if (state.world){
+            lost = 0;
+            double cx = state.world_box.x + state.world_box.width / 2;
+            double offset = cx - 0.5;
+            if (std::abs(offset) > 0.04){
+                double push_ms = std::max(40.0, std::min(std::abs(offset) * 450.0, 300.0));
+                pbf_move_right_joystick(
+                    context, {offset > 0 ? 1.0 : -1.0, 0},
+                    Milliseconds((int64_t)push_ms), 300ms
+                );
+                continue;
+            }
+
+            if (stuck > 0){
+                //  Blocked: step sideways (alternating), then try again.
+                double side = (stuck % 2 == 1) ? -1.0 : 1.0;
+                env.log("Blocked. Stepping sideways (" + std::to_string(stuck) + ").", COLOR_RED);
+                pbf_move_left_joystick(context, {side, 0.3}, 500ms, 200ms);
+            }
+            pbf_move_left_joystick(context, {0, 1}, 400ms, 200ms);
+            stick_x = 0;
+            stick_y = 1;
+
+            State after = read_state();
+            if (after.world && !after.dialog && !after.prompt){
+                double after_cx = after.world_box.x + after.world_box.width / 2;
+                double after_cy = after.world_box.y + after.world_box.height / 2;
+                double before_cy = state.world_box.y + state.world_box.height / 2;
+                double size_change = std::abs(after.world_box.width - state.world_box.width) / state.world_box.width;
+                if (std::abs(after_cx - cx) < 0.004 && std::abs(after_cy - before_cy) < 0.004 && size_change < 0.03){
+                    stuck++;
+                    if (stuck >= 12){
+                        OperationFailedExceptionWithScreenshot::fire(
+                            ErrorReportMode::NO_ERROR_REPORT,
+                            "walk_to_quest_marker(): Stuck on the way to " + name + ".",
+                            env.console
+                        );
+                    }
+                }else{
+                    stuck = 0;
+                }
+            }
+            continue;
+        }
+
+        //  Nothing in sight.
+        lost++;
+        if (lost > 20){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "walk_to_quest_marker(): Unable to find the quest marker for " + name + ".",
+                env.console
+            );
+        }
+        if (state.minimap){
+            //  Marker is under the player arrow: keep going a little.
+            pbf_move_left_joystick(context, {stick_x, stick_y}, 300ms, 200ms);
+        }else{
+            env.log("No quest marker in sight. Turning the camera.", COLOR_RED);
+            pbf_move_right_joystick(context, {1, 0}, 250ms, 400ms);
+        }
+    }
+
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "walk_to_quest_marker(): Did not reach " + name + ".",
+        env.console
+    );
+}
+
+
+
+void AutoStory::walk_to_lab(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Walking to the Pokemon lab.");
+
+    //  Put the camera behind the player.
+    pbf_press_button(context, BUTTON_L, 160ms, 500ms);
+
+    for (int attempt = 0; attempt < 20; attempt++){
+        WalkResult result = walk_to_quest_marker(env, context, "Lab", true);
+        if (result == WalkResult::Dialog){
+            //  Getting close to the lab starts a story scene.
+            clear_dialogs(env, context, "Lab story", false);
+            pbf_press_button(context, BUTTON_L, 160ms, 500ms);
+            continue;
+        }
+
+        //  "A 進入" at the door.
+        env.log("Entering the lab.");
+        pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+
+        //  Inside once the HUD is back without the minimap.
+        WallClock start = current_time();
+        int inside = 0;
+        bool dialog = false;
+        while (current_time() - start < std::chrono::seconds(15)){
+            context.wait_for_all_requests();
+            VideoSnapshot snapshot = env.console.video().snapshot();
+            if (dialog_on_screen(snapshot)){
+                dialog = true;
+                break;
+            }
+            double heading = 0;
+            if (read_party_slot_count(snapshot) >= 1 && !read_camera_heading(snapshot, heading)){
+                if (++inside >= 3){
+                    env.log("Inside the lab.", COLOR_BLUE);
+                    env.console.overlay().add_log("Inside the lab");
+                    return;
+                }
+            }else{
+                inside = 0;
+            }
+            context.wait_for(500ms);
+        }
+        if (dialog){
+            clear_dialogs(env, context, "Lab door", false);
+        }else{
+            env.log("Still outside the lab. Trying again.", COLOR_RED);
+        }
+    }
+
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "walk_to_lab(): Unable to get into the lab.",
+        env.console
+    );
+}
+
+
+
+void AutoStory::take_lab_elevator(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Taking the lab elevator to 3F.");
+
+    for (int attempt = 0; attempt < 10; attempt++){
+        WalkResult result = walk_to_quest_marker(env, context, "Elevator", false);
+        if (result == WalkResult::Dialog){
+            clear_dialogs(env, context, "Lab 1F", false);
+            continue;
+        }
+
+        //  "A 搭電梯".
+        pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+
+        //  Floor menu: pick the 2nd row (3F). Judge by the green pointer and
+        //  the white highlight, not the text.
+        WallClock start = current_time();
+        bool picked = false;
+        bool menu_seen = false;
+        while (current_time() - start < std::chrono::seconds(8)){
+            context.wait_for_all_requests();
+            VideoSnapshot snapshot = env.console.video().snapshot();
+            int row = read_choice_menu_row(snapshot);
+            if (row < 0){
+                if (!menu_seen && dialog_on_screen(snapshot)){
+                    break;  //  Talked to someone instead.
+                }
+                context.wait_for(200ms);
+                continue;
+            }
+            menu_seen = true;
+            env.log("Elevator menu: pointer on row " + std::to_string(row + 1) + ".");
+            if (row == 1){
+                pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+                picked = true;
+                break;
+            }
+            if (row == 0){
+                pbf_press_dpad(context, DPAD_DOWN, 160ms, 340ms);
+            }else{
+                pbf_press_dpad(context, DPAD_UP, 160ms, 340ms);
+            }
+        }
+        if (picked){
+            env.log("Picked 3F.", COLOR_BLUE);
+            env.console.overlay().add_log("Elevator: 3F");
+            return;
+        }
+        if (menu_seen){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "take_lab_elevator(): Unable to pick the 2nd floor in the elevator menu.",
+                env.console
+            );
+        }
+        env.log("No elevator menu. Trying again.", COLOR_RED);
+        clear_dialogs(env, context, "Lab 1F", false);
+    }
+
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "take_lab_elevator(): Unable to use the elevator.",
+        env.console
+    );
+}
+
+
+
+void AutoStory::walk_to_mimi(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Walking to Mimi on 3F.");
+
+    //  There is a desk right in front of the elevator. Go around it to the
+    //  left first.
+    pbf_move_left_joystick(context, {-0.7, 0.7}, 1200ms, 300ms);
+
+    WalkResult result = walk_to_quest_marker(env, context, "Mimi", false);
+    if (result == WalkResult::Prompt){
+        //  Next to her before the scene started: talk.
+        pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+    }
+    clear_dialogs(env, context, "Mimi", true);
+}
+
+
+
+void AutoStory::open_research_list(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Opening Mimi's research list.");
+    env.console.overlay().add_log("Menu: research list");
+
+    pbf_press_button(context, BUTTON_X, 160ms, 1840ms);    //  main menu
+    pbf_press_button(context, BUTTON_X, 160ms, 2840ms);    //  reward list (Mimi's research)
+
+    //  Back out to the overworld. Closing the menu starts the story.
+    for (int c = 0; c < 8; c++){
+        pbf_press_button(context, BUTTON_B, 160ms, 1240ms);
+        context.wait_for_all_requests();
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        CutsceneLetterboxDetector letterbox;
+        if (dialog_on_screen(snapshot) || letterbox.detect(snapshot) || read_party_slot_count(snapshot) >= 1){
+            env.log("Menu closed.", COLOR_BLUE);
+            env.console.overlay().add_log("Menu closed");
+            return;
+        }
+    }
+    env.log("Unable to confirm the menu closed.", COLOR_RED);
+}
+
+
+
 void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
@@ -1278,33 +1717,52 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         catch_wild_pokemon(env, context, "weedle", "Weedle");
     }
 
-    //  ZA-12: leave Wild Zone 1. Stops once outside.
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
-    if (WILD_ZONE_WALK.get() == WildZoneWalk::MinimapNavigation){
-        std::pair<double, double> stick = navigate_by_minimap(
-            env, context, "Gate", GATE_SPOT_X, GATE_SPOT_Y, 0.004
-        );
+    //  ZA-12: leave Wild Zone 1.
+    if (start <= StartPoint::LeaveWildZone){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
+        if (WILD_ZONE_WALK.get() == WildZoneWalk::MinimapNavigation){
+            std::pair<double, double> stick = navigate_by_minimap(
+                env, context, "Gate", GATE_SPOT_X, GATE_SPOT_Y, 0.004
+            );
 
-        //  Standing on the gate marker. If the exit prompt is not up yet,
-        //  keep going the same way a little at a time (a few tries; then
-        //  leave_wild_zone() presses A anyway).
-        const ImageFloatBox PROMPT_BOX(0.25, 0.0, 0.5, 0.85);
-        for (int c = 0; c < 3; c++){
-            context.wait_for_all_requests();
-            ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
-            if (wait_until(env.console, context, 1000ms, {prompt}) == 0){
-                break;
+            //  Standing on the gate marker. If the exit prompt is not up yet,
+            //  keep going the same way a little at a time (a few tries; then
+            //  leave_wild_zone() presses A anyway).
+            const ImageFloatBox PROMPT_BOX(0.25, 0.0, 0.5, 0.85);
+            for (int c = 0; c < 3; c++){
+                context.wait_for_all_requests();
+                ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
+                if (wait_until(env.console, context, 1000ms, {prompt}) == 0){
+                    break;
+                }
+                env.log("No exit prompt yet. Stepping toward the gate.");
+                pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
             }
-            env.log("No exit prompt yet. Stepping toward the gate.");
-            pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
+        }else{
+            face_camera_north(env, context);
+            run_macro(env, context, MACRO_WALK_TO_GATE);
         }
-    }else{
-        face_camera_north(env, context);
-        run_macro(env, context, MACRO_WALK_TO_GATE);
+        leave_wild_zone(env, context);
     }
-    leave_wild_zone(env, context);
+
+    //  ZA-13: the lab. Each step starts where the game saves.
+    if (start <= StartPoint::WalkToLab){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to the lab.");
+        walk_to_lab(env, context);
+    }
+    if (start <= StartPoint::LabElevator){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Lab elevator.");
+        take_lab_elevator(env, context);
+        clear_dialogs(env, context, "3F story", true);
+    }
+    if (start <= StartPoint::LabMimi){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to Mimi.");
+        walk_to_mimi(env, context);
+    }
+    open_research_list(env, context);
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
+    GO_HOME_WHEN_DONE.run_end_of_program(context);
 }
 
 
