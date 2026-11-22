@@ -1198,6 +1198,7 @@ void AutoStory::clear_dialogs(
     WallClock last_activity = start;
     size_t presses = 0;
     bool waited_long = false;
+    WallClock last_blind_press = start - std::chrono::seconds(10);
 
     while (true){
         WallClock now = current_time();
@@ -1219,9 +1220,20 @@ void AutoStory::clear_dialogs(
             continue;
         }
 
+        bool hud = read_party_slot_count(snapshot) >= 1;
         CutsceneLetterboxDetector letterbox;
-        if (letterbox.detect(snapshot) || read_party_slot_count(snapshot) < 1){
-            //  Cutscene, fade, loading or a menu: not done yet.
+        if (!hud && !is_black(snapshot, 80, 40)){
+            //  Story scene without the HUD. Some dialog boxes have no fixed
+            //  shape (e.g. the jagged white "shout" bubble), so press A
+            //  slowly while the HUD is gone. A does nothing in a cutscene.
+            if (current_time() - last_blind_press >= 1200ms){
+                pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+                presses++;
+                last_blind_press = current_time();
+            }
+            last_activity = current_time();
+        }else if (!hud || letterbox.detect(snapshot)){
+            //  Fade, loading or a cutscene: not done yet.
             last_activity = current_time();
         }else if (now - last_activity >= QUIET_NEEDED){
             if (presses > 0 || !require_dialog || waited_long){
@@ -1261,6 +1273,7 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
         bool world = false;
         ImageFloatBox world_box;
         int distance = -1;      //  meters, outdoors only
+        bool hud = true;
     };
     auto read_state = [&](){
         context.wait_for_all_requests();
@@ -1268,6 +1281,7 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
         State state;
         state.dialog = dialog_on_screen(snapshot);
         state.prompt = a_prompt_on_screen(snapshot);
+        state.hud = read_party_slot_count(snapshot) >= 1;
         if (outdoors){
             state.minimap = find_minimap_quest_marker(snapshot, state.mdx, state.mdy)
                 && read_camera_heading(snapshot, state.heading);
@@ -1281,6 +1295,7 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
 
     int lost = 0;
     int stuck = 0;
+    int no_hud = 0;
     double stick_x = 0;
     double stick_y = 1;
 
@@ -1290,6 +1305,17 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
             env.log("Dialog on the way to " + name + ".");
             return WalkResult::Dialog;
         }
+        if (!state.hud){
+            //  The HUD goes away when a story scene starts (and some dialog
+            //  boxes have no fixed shape). Two reads in a row to be sure.
+            if (++no_hud >= 2){
+                env.log("HUD gone on the way to " + name + ". Story scene.");
+                return WalkResult::Dialog;
+            }
+            context.wait_for(300ms);
+            continue;
+        }
+        no_hud = 0;
 
         double mdist = state.minimap
             ? std::sqrt(state.mdx * state.mdx + state.mdy * state.mdy)
