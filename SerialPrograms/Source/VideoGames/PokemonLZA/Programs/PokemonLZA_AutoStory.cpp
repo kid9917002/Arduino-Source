@@ -26,6 +26,8 @@
 #include "Pokemon/Pokemon_Strings.h"
 #include "Pokemon/Inference/Pokemon_NameReader.h"
 #include "CommonTools/OCR/OCR_Routines.h"
+#include "CommonTools/OCR/OCR_NumberReader.h"
+#include "CommonFramework/Tools/GlobalThreadPools.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_ButtonDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h"
@@ -1136,6 +1138,39 @@ bool a_prompt_on_screen(const ImageViewRGB32& screen){
     return prompt.detect(screen);
 }
 
+//  Outdoors, the distance (meters) is written in white right above the
+//  world quest marker. Indoors there is no number. Returns -1 if unreadable.
+int read_quest_marker_distance(Logger& logger, const ImageViewRGB32& screen, const ImageFloatBox& marker){
+    ImageFloatBox box(
+        marker.x - marker.width * 0.6,
+        marker.y - marker.height * 0.85,
+        marker.width * 2.2,
+        marker.height * 0.7
+    );
+    if (box.x < 0 || box.y < 0 || box.x + box.width > 1 || box.y + box.height > 1){
+        return -1;
+    }
+    ImageViewRGB32 image = extract_box_reference(screen, box);
+    if (image.width() < 4 || image.height() < 4){
+        return -1;
+    }
+    const std::vector<std::pair<uint32_t, uint32_t>> filters = {
+        {0xffb0b0b0, 0xffffffff},
+        {0xffc8c8c8, 0xffffffff},
+        {0xffe0e0e0, 0xffffffff},
+    };
+    size_t min_digit_area = image.height() * image.height() / 25;
+    int number = OCR::read_number_waterfill_multifilter(
+        logger, GlobalThreadPools::computation_realtime(),
+        image, filters,
+        true, true, SIZE_MAX, min_digit_area
+    );
+    if (number < 0 || number > 999){
+        return -1;
+    }
+    return number;
+}
+
 }
 
 
@@ -1215,6 +1250,7 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
         double heading = 0;
         bool world = false;
         ImageFloatBox world_box;
+        int distance = -1;      //  meters, outdoors only
     };
     auto read_state = [&](){
         context.wait_for_all_requests();
@@ -1227,6 +1263,9 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
                 && read_camera_heading(snapshot, state.heading);
         }
         state.world = find_world_quest_marker(snapshot, state.world_box);
+        if (outdoors && state.world){
+            state.distance = read_quest_marker_distance(env.logger(), snapshot, state.world_box);
+        }
         return state;
     };
 
@@ -1249,14 +1288,76 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
         if (state.prompt){
             //  Outdoors, ignore prompts from people on the street: only stop
             //  when the marker is close.
-            if (!outdoors || mdist <= 0.03 || (!state.minimap && state.world)){
+            bool near_marker = state.world && (state.distance < 0 || state.distance <= 8);
+            if (!outdoors || mdist <= 0.03 || near_marker){
                 env.log("A prompt at " + name + ".", COLOR_BLUE);
                 return WalkResult::Prompt;
             }
         }
 
-        //  Outdoors and not close yet: steer by the minimap.
-        if (state.minimap && (mdist > 0.006 || !state.world)){
+        //  Steer by the marker in the world (more exact than the minimap):
+        //  turn the camera to put it in the middle, then walk forward.
+        if (state.world){
+            lost = 0;
+            double cx = state.world_box.x + state.world_box.width / 2;
+            double offset = cx - 0.5;
+            if (std::abs(offset) > 0.04){
+                double push_ms = std::max(40.0, std::min(std::abs(offset) * 450.0, 300.0));
+                pbf_move_right_joystick(
+                    context, {offset > 0 ? 1.0 : -1.0, 0},
+                    Milliseconds((int64_t)push_ms), 300ms
+                );
+                continue;
+            }
+
+            if (stuck > 0){
+                //  Blocked: step sideways (alternating), then try again.
+                double side = (stuck % 2 == 1) ? -1.0 : 1.0;
+                env.log("Blocked. Stepping sideways (" + std::to_string(stuck) + ").", COLOR_RED);
+                pbf_move_left_joystick(context, {side, 0.3}, 500ms, 200ms);
+            }
+            double walk_ms = 400;
+            if (state.distance > 0){
+                walk_ms = std::max(400.0, std::min(state.distance * 80.0, 1500.0));
+            }
+            env.log(
+                name + ": marker at x = " + std::to_string(cx) +
+                ", distance " + (state.distance >= 0 ? std::to_string(state.distance) + " m" : std::string("?")) +
+                ", walk " + std::to_string((int)walk_ms) + " ms"
+            );
+            pbf_move_left_joystick(context, {0, 1}, Milliseconds((int64_t)walk_ms), 200ms);
+            stick_x = 0;
+            stick_y = 1;
+
+            State after = read_state();
+            if (after.world && !after.dialog && !after.prompt){
+                double after_cx = after.world_box.x + after.world_box.width / 2;
+                double after_cy = after.world_box.y + after.world_box.height / 2;
+                double before_cy = state.world_box.y + state.world_box.height / 2;
+                double size_change = std::abs(after.world_box.width - state.world_box.width) / state.world_box.width;
+                bool not_closer = (state.distance > 0 && after.distance > 0)
+                    ? after.distance >= state.distance
+                    : (std::abs(after_cx - cx) < 0.004 && std::abs(after_cy - before_cy) < 0.004 && size_change < 0.03);
+                if (not_closer){
+                    stuck++;
+                    if (stuck >= 12){
+                        OperationFailedExceptionWithScreenshot::fire(
+                            ErrorReportMode::NO_ERROR_REPORT,
+                            "walk_to_quest_marker(): Stuck on the way to " + name + ".",
+                            env.console
+                        );
+                    }
+                }else{
+                    stuck = 0;
+                }
+            }
+            continue;
+        }
+
+        //  Marker not on screen (behind the camera, far away): steer by the
+        //  minimap. Not when it is right under the player arrow (the
+        //  direction is meaningless there): look around instead.
+        if (state.minimap && mdist > 0.004){
             lost = 0;
             double bearing = std::atan2(state.mdx, -state.mdy) * 180.0 / PI;
             double relative = (bearing - state.heading) * PI / 180.0;
@@ -1298,53 +1399,6 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
             continue;
         }
 
-        //  Steer by the marker in the world: turn the camera to put it in the
-        //  middle, then walk forward.
-        if (state.world){
-            lost = 0;
-            double cx = state.world_box.x + state.world_box.width / 2;
-            double offset = cx - 0.5;
-            if (std::abs(offset) > 0.04){
-                double push_ms = std::max(40.0, std::min(std::abs(offset) * 450.0, 300.0));
-                pbf_move_right_joystick(
-                    context, {offset > 0 ? 1.0 : -1.0, 0},
-                    Milliseconds((int64_t)push_ms), 300ms
-                );
-                continue;
-            }
-
-            if (stuck > 0){
-                //  Blocked: step sideways (alternating), then try again.
-                double side = (stuck % 2 == 1) ? -1.0 : 1.0;
-                env.log("Blocked. Stepping sideways (" + std::to_string(stuck) + ").", COLOR_RED);
-                pbf_move_left_joystick(context, {side, 0.3}, 500ms, 200ms);
-            }
-            pbf_move_left_joystick(context, {0, 1}, 400ms, 200ms);
-            stick_x = 0;
-            stick_y = 1;
-
-            State after = read_state();
-            if (after.world && !after.dialog && !after.prompt){
-                double after_cx = after.world_box.x + after.world_box.width / 2;
-                double after_cy = after.world_box.y + after.world_box.height / 2;
-                double before_cy = state.world_box.y + state.world_box.height / 2;
-                double size_change = std::abs(after.world_box.width - state.world_box.width) / state.world_box.width;
-                if (std::abs(after_cx - cx) < 0.004 && std::abs(after_cy - before_cy) < 0.004 && size_change < 0.03){
-                    stuck++;
-                    if (stuck >= 12){
-                        OperationFailedExceptionWithScreenshot::fire(
-                            ErrorReportMode::NO_ERROR_REPORT,
-                            "walk_to_quest_marker(): Stuck on the way to " + name + ".",
-                            env.console
-                        );
-                    }
-                }else{
-                    stuck = 0;
-                }
-            }
-            continue;
-        }
-
         //  Nothing in sight.
         lost++;
         if (lost > 20){
@@ -1354,13 +1408,8 @@ AutoStory::WalkResult AutoStory::walk_to_quest_marker(
                 env.console
             );
         }
-        if (state.minimap){
-            //  Marker is under the player arrow: keep going a little.
-            pbf_move_left_joystick(context, {stick_x, stick_y}, 300ms, 200ms);
-        }else{
-            env.log("No quest marker in sight. Turning the camera.", COLOR_RED);
-            pbf_move_right_joystick(context, {1, 0}, 250ms, 400ms);
-        }
+        env.log("No quest marker on screen. Turning the camera to look for it.", COLOR_RED);
+        pbf_move_right_joystick(context, {1, 0}, 250ms, 400ms);
     }
 
     OperationFailedExceptionWithScreenshot::fire(

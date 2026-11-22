@@ -494,8 +494,8 @@ bool find_world_quest_marker(const ImageViewRGB32& screen, ImageFloatBox& box){
         if (std::sqrt(ox * ox + oy * oy) <= 0.062){
             continue;   //  minimap
         }
-        if (cx < 0.22 && cy < 0.36){
-            continue;   //  quest panel
+        if (cx < 0.09 && cy < 0.13){
+            continue;   //  quest panel icon
         }
         if (cy > 0.80){
             continue;   //  bottom HUD
