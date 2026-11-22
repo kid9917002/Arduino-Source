@@ -25,6 +25,7 @@
 #ifndef PokemonAutomation_PokemonLZA_StoryScreenDetectors_H
 #define PokemonAutomation_PokemonLZA_StoryScreenDetectors_H
 
+#include <string>
 #include "Common/Cpp/Color.h"
 #include "CommonFramework/ImageTools/ImageBoxes.h"
 #include "CommonTools/VisualDetector.h"
@@ -63,7 +64,9 @@ bool read_camera_heading(const ImageViewRGB32& screen, double& degrees);
 //  While ZL is held on a wild Pokemon, a label with its level, name and a
 //  green HP bar floats above it. Find that HP bar. Returns false if there is
 //  no locked target. The name is just above the bar.
-bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar);
+//  If debug is not null, a short description of the closest candidates is
+//  written to it (for the log).
+bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar, std::string* debug = nullptr);
 
 //  Where the name text is, given the HP bar from find_locked_target_hp_bar().
 ImageFloatBox locked_target_name_box(const ImageFloatBox& bar);

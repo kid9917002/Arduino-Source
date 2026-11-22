@@ -213,7 +213,7 @@ bool read_camera_heading(const ImageViewRGB32& screen, double& degrees){
 
 
 
-bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar){
+bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar, std::string* debug){
     size_t width = screen.width();
     size_t height = screen.height();
     if (width < 100 || height < 100){
@@ -224,14 +224,35 @@ bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar)
     const ImageFloatBox SEARCH_AREA(0.0, 0.0, 1.0, 0.80);
     ImageViewRGB32 area = extract_box_reference(screen, SEARCH_AREA);
 
-    //  The bar is a flat green, measured at about (57, 219, 112).
+    //  The bar is a flat, strong green, measured at about (57, 219, 112) in
+    //  a screenshot. Allow a wide range: the capture card and the label's
+    //  fade-in shift it. Grass (low green or high red) and the yellow-green
+    //  Wild Zone walls (high red, low blue) stay out of this range.
     PackedBinaryMatrix matrix = compress_rgb32_to_binary_range(
         area,
-        27, 87,
-        194, 244,
-        82, 142
+        0, 115,
+        175, 255,
+        50, 170
     );
-    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 50);
+    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 30);
+
+    if (debug){
+        //  Describe the 3 biggest green objects.
+        std::vector<const WaterfillObject*> sorted;
+        for (const WaterfillObject& object : objects){
+            sorted.push_back(&object);
+        }
+        std::sort(sorted.begin(), sorted.end(), [](const WaterfillObject* a, const WaterfillObject* b){
+            return a->area > b->area;
+        });
+        *debug = std::to_string(objects.size()) + " green objects.";
+        for (size_t i = 0; i < sorted.size() && i < 3; i++){
+            const WaterfillObject& object = *sorted[i];
+            *debug += " [x=" + std::to_string(object.min_x) + " y=" + std::to_string(object.min_y)
+                + " w=" + std::to_string(object.width()) + " h=" + std::to_string(object.height())
+                + " fill=" + std::to_string((int)(object.area_ratio() * 100)) + "%]";
+        }
+    }
 
     bool found = false;
     size_t best_area = 0;
@@ -247,7 +268,7 @@ bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar)
         if (object.width() < 4 * object.height()){
             continue;   //  must be a flat bar
         }
-        if (object.area_ratio() < 0.7){
+        if (object.area_ratio() < 0.6){
             continue;   //  must be solid
         }
         if (object.area > best_area){

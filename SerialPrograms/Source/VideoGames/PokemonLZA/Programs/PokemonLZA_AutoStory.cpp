@@ -641,12 +641,32 @@ void AutoStory::catch_wild_pokemon(
 
         //  Hold ZL. The press is queued and the next command may start right
         //  away, so ZR can be pressed while ZL is still held.
-        ssf_press_button(context, BUTTON_ZL, 0ms, 2200ms, 0ms);
-        context.wait_for(900ms);    //  let the label appear
+        ssf_press_button(context, BUTTON_ZL, 0ms, 3000ms, 0ms);
 
-        VideoSnapshot snapshot = env.console.video().snapshot();
+        //  The label fades in, and the capture lags the console. Keep looking
+        //  for the HP bar for up to about 2 seconds of the hold.
+        WallClock hold_start = current_time();
+        VideoSnapshot snapshot;
         ImageFloatBox bar;
-        bool locked = find_locked_target_hp_bar(snapshot, bar);
+        bool locked = false;
+        std::string debug;
+        context.wait_for(300ms);
+        while (current_time() - hold_start < 2000ms){
+            snapshot = env.console.video().snapshot();
+            if (find_locked_target_hp_bar(snapshot, bar, &debug)){
+                locked = true;
+                //  Give the name a moment to finish fading in.
+                context.wait_for(150ms);
+                VideoSnapshot again = env.console.video().snapshot();
+                ImageFloatBox again_bar;
+                if (find_locked_target_hp_bar(again, again_bar)){
+                    snapshot = std::move(again);
+                    bar = again_bar;
+                }
+                break;
+            }
+            context.wait_for(150ms);
+        }
 
         bool is_target = false;
         if (locked){
@@ -666,7 +686,13 @@ void AutoStory::catch_wild_pokemon(
             }
             env.log("Locked onto: " + (names.empty() ? std::string("(unreadable)") : names));
         }else{
-            env.log("Nothing to lock onto.");
+            env.log("Nothing to lock onto. " + debug);
+            //  Save a few of these frames so the detection can be checked.
+            if (attempt <= 3 && snapshot.frame){
+                std::string path = "AutoStory-ZL-" + slug + "-" + std::to_string(attempt) + ".png";
+                snapshot.frame->save(path);
+                env.log("Saved " + path);
+            }
         }
 
         if (!is_target){
