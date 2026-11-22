@@ -926,35 +926,32 @@ void AutoStory::leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControll
     env.log("Leaving the Wild Zone.");
     env.console.overlay().add_log("Leave Wild Zone");
 
-    //  "A 離開" prompt next to the player at the gate.
-    const ImageFloatBox PROMPT_BOX(0.50, 0.53, 0.10, 0.12);
+    //  The "A 離開" prompt floats next to the player, and where it shows up
+    //  depends on the camera angle, so look over most of the screen. It is
+    //  only used to confirm: we are standing on the gate, so press A anyway.
+    const ImageFloatBox PROMPT_BOX(0.25, 0.0, 0.5, 0.85);
 
-    context.wait_for_all_requests();
-    ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
-    int ret = wait_until(env.console, context, 10000ms, {prompt});
-    if (ret < 0){
-        OperationFailedExceptionWithScreenshot::fire(
-            ErrorReportMode::NO_ERROR_REPORT,
-            "leave_wild_zone(): No \"A 離開\" prompt. Check that the walking macro ends at the gate.",
-            env.console
-        );
-    }
+    for (int c = 0; c < 3; c++){
+        context.wait_for_all_requests();
+        ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
+        int ret = wait_until(env.console, context, 2000ms, {prompt});
+        if (ret == 0){
+            env.log("Exit prompt found. Pressing A.", COLOR_BLUE);
+        }else{
+            env.log("No exit prompt seen. At the gate, so pressing A anyway.", COLOR_RED);
+        }
+        pbf_press_button(context, BUTTON_A, 160ms, 840ms);
+        context.wait_for_all_requests();
 
-    env.log("Exit prompt found. Pressing A.", COLOR_BLUE);
-    pbf_press_button(context, BUTTON_A, 160ms, 840ms);
-    context.wait_for_all_requests();
-
-    //  Wait until the prompt is gone and the transition has finished.
-    for (int c = 0; c < 10; c++){
+        //  Left once the prompt is gone and stays gone.
         ButtonWatcher still_there(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
-        ret = wait_until(env.console, context, 1000ms, {still_there});
+        ret = wait_until(env.console, context, 3000ms, {still_there});
         if (ret < 0){
             break;
         }
         env.log("Exit prompt still there. Pressing A again.");
-        pbf_press_button(context, BUTTON_A, 160ms, 840ms);
-        context.wait_for_all_requests();
     }
+
     context.wait_for(5000ms);
     env.log("Left the Wild Zone.", COLOR_BLUE);
     env.console.overlay().add_log("Left Wild Zone");
@@ -1283,10 +1280,11 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
             env, context, "Gate", GATE_SPOT_X, GATE_SPOT_Y, 0.004
         );
 
-        //  Close enough to the gate. If the exit prompt is not up yet, keep
-        //  going the same way a little at a time.
-        const ImageFloatBox PROMPT_BOX(0.50, 0.53, 0.10, 0.12);
-        for (int c = 0; c < 6; c++){
+        //  Standing on the gate marker. If the exit prompt is not up yet,
+        //  keep going the same way a little at a time (a few tries; then
+        //  leave_wild_zone() presses A anyway).
+        const ImageFloatBox PROMPT_BOX(0.25, 0.0, 0.5, 0.85);
+        for (int c = 0; c < 3; c++){
             context.wait_for_all_requests();
             ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
             if (wait_until(env.console, context, 1000ms, {prompt}) == 0){
