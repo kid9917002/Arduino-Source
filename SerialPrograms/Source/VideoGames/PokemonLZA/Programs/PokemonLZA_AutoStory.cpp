@@ -16,6 +16,8 @@
 #include "CommonFramework/VideoPipeline/VideoFeed.h"
 #include "CommonFramework/VideoPipeline/VideoOverlayScopes.h"
 #include "CommonTools/Async/InferenceRoutines.h"
+#include "CommonTools/Async/InterruptableCommands.h"
+#include "NintendoSwitch/Controllers/Procon/NintendoSwitch_ProController.h"
 #include "CommonTools/StartupChecks/VideoResolutionCheck.h"
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_PushButtons.h"
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_Superscalar.h"
@@ -639,19 +641,22 @@ void AutoStory::catch_wild_pokemon(
     for (int attempt = 1; attempt <= MAX_LOCK_TRIES; attempt++){
         context.wait_for_all_requests();
 
-        //  Hold ZL. The press is queued and the next command may start right
-        //  away, so ZR can be pressed while ZL is still held.
-        ssf_press_button(context, BUTTON_ZL, 0ms, 3000ms, 0ms);
+        //  Hold ZL in a background command while this thread watches the
+        //  screen (same pattern as TrainerBattleState::attempt_one_attack).
+        AsyncCommandSession<ProController> command(context, env.console.logger(), context);
+        command.dispatch([](ProControllerContext& context){
+            pbf_press_button(context, BUTTON_ZL, 5000ms, 0ms);
+        });
 
         //  The label fades in, and the capture lags the console. Keep looking
-        //  for the HP bar for up to about 2 seconds of the hold.
+        //  for the HP bar for up to about 2.5 seconds of the hold.
         WallClock hold_start = current_time();
         VideoSnapshot snapshot;
         ImageFloatBox bar;
         bool locked = false;
         std::string debug;
         context.wait_for(300ms);
-        while (current_time() - hold_start < 2000ms){
+        while (current_time() - hold_start < 2500ms){
             snapshot = env.console.video().snapshot();
             if (find_locked_target_hp_bar(snapshot, bar, &debug)){
                 locked = true;
@@ -685,6 +690,11 @@ void AutoStory::catch_wild_pokemon(
                 }
             }
             env.log("Locked onto: " + (names.empty() ? std::string("(unreadable)") : names));
+            if (!is_target && attempt <= 3 && snapshot.frame){
+                std::string path = "AutoStory-ZL-" + slug + "-name-" + std::to_string(attempt) + ".png";
+                snapshot.frame->save(path);
+                env.log("Saved " + path);
+            }
         }else{
             env.log("Nothing to lock onto. " + debug);
             //  Save a few of these frames so the detection can be checked.
@@ -697,16 +707,23 @@ void AutoStory::catch_wild_pokemon(
 
         if (!is_target){
             //  Let go of ZL, turn the camera a little and try the next one.
+            command.stop_session_and_rethrow();
             context.wait_for_all_requests();
             pbf_move_right_joystick(context, {1, 0}, 120ms, 400ms);
             continue;
         }
 
-        //  It is the one. Throw while still holding ZL.
+        //  It is the one. Keep holding ZL and press ZR to throw.
         throws++;
         env.log(display_name + " locked. Throwing (" + std::to_string(throws) + ").", COLOR_BLUE);
         env.console.overlay().add_log("Throw at " + display_name);
-        pbf_press_button(context, BUTTON_ZR, 120ms, 0ms);
+        command.dispatch([](ProControllerContext& context){
+            ssf_press_button(context, BUTTON_ZL, 0ms, 1200ms, 0ms);
+            pbf_wait(context, 300ms);
+            pbf_press_button(context, BUTTON_ZR, 160ms, 1000ms);
+        });
+        command.wait();
+        command.stop_session_and_rethrow();
         context.wait_for_all_requests();
 
         //  The ball flies and shakes, then the Pokemon shows up in the party
