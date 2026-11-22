@@ -3060,9 +3060,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         //  Confirm the look; the name keyboard comes up.
         pbf_press_button(context, BUTTON_A, 160ms, 340ms);
         {
-            WallClock start = current_time();
+            WallClock keyboard_wait = current_time();
             bool keyboard = false;
-            while (current_time() - start < std::chrono::seconds(10)){
+            while (current_time() - keyboard_wait < std::chrono::seconds(10)){
                 context.wait_for_all_requests();
                 double kx = 0;
                 double ky = 0;
