@@ -1517,29 +1517,33 @@ bool b_close_screen(const ImageViewRGB32& screen){
     return white_ratio >= 0.18 && white_ratio <= 0.60 && dark_ratio >= 0.03;
 }
 
-bool dialog_on_screen(const ImageViewRGB32& screen){
-    if (white_box_chevron(screen) || mission_banner(screen) || white_dialog_box(screen)){
-        return true;
-    }
+//  Which detector sees a dialog (for the log), or nullptr.
+const char* dialog_kind(const ImageViewRGB32& screen){
+    if (white_box_chevron(screen)){ return "white box chevron"; }
+    if (mission_banner(screen)){ return "mission banner"; }
+    if (white_dialog_box(screen)){ return "white dialog box"; }
     //  A choice (e.g. 是的 / 你说得对!): green pointer + white row.
     double pointer_y = 0;
-    if (find_choice_menu_pointer(screen, pointer_y)){
-        return true;
-    }
+    if (find_choice_menu_pointer(screen, pointer_y)){ return "choice pointer"; }
     FlatWhiteDialogDetector flat_white;
+    if (flat_white.detect(screen)){ return "FlatWhiteDialog"; }
     BlueDialogDetector blue;
+    if (blue.detect(screen)){ return "BlueDialog"; }
     TealDialogDetector teal;
+    if (teal.detect(screen)){ return "TealDialog"; }
     LightBlueDialogDetector light_blue;
+    if (light_blue.detect(screen)){ return "LightBlueDialog"; }
     TransparentBattleDialogDetector transparent;
+    if (transparent.detect(screen)){ return "TransparentBattleDialog"; }
     ItemReceiveDetector item;
+    if (item.detect(screen)){ return "ItemReceive"; }
     TutorialWindowDetector tutorial;
-    return flat_white.detect(screen)
-        || blue.detect(screen)
-        || teal.detect(screen)
-        || light_blue.detect(screen)
-        || transparent.detect(screen)
-        || item.detect(screen)
-        || tutorial.detect(screen);
+    if (tutorial.detect(screen)){ return "TutorialWindow"; }
+    return nullptr;
+}
+
+bool dialog_on_screen(const ImageViewRGB32& screen){
+    return dialog_kind(screen) != nullptr;
 }
 
 //  Only meaningful on Mable's Research screen (bright teal): Mable's dark
@@ -1654,6 +1658,9 @@ void AutoStoryMultiLang::clear_dialogs(
     //  video: the HUD is there, it just was not recognized. From then on,
     //  "not black and no cutscene bars" counts as the overworld.
     size_t skips_without_dialog = 0;
+    static const char* const BLIND = "blind";
+    const char* last_kind = nullptr;
+    WallClock last_kind_log = start;
     bool hud_fallback = false;
 
     if (press_first){
@@ -1699,7 +1706,14 @@ void AutoStoryMultiLang::clear_dialogs(
             return;
         }
 
-        if (dialog_on_screen(snapshot)){
+        if (const char* kind = dialog_kind(snapshot)){
+            //  Log which detector fired (once per change, or every 5 s), so
+            //  a false detection can be found in the log.
+            if (last_kind != kind || current_time() - last_kind_log >= std::chrono::seconds(5)){
+                env.log(std::string("A: dialog (") + kind + ")");
+                last_kind = kind;
+                last_kind_log = current_time();
+            }
             skips_without_dialog = 0;
             pbf_press_button(context, BUTTON_A, 100ms, 200ms);
             presses++;
@@ -1774,6 +1788,11 @@ void AutoStoryMultiLang::clear_dialogs(
             //  shape (e.g. the jagged white "shout" bubble), so press A
             //  slowly while the HUD is gone. A does nothing in a cutscene.
             if (current_time() - last_blind_press >= 700ms){
+                if (last_kind != BLIND || current_time() - last_kind_log >= std::chrono::seconds(5)){
+                    env.log("A: blind (no HUD, no dialog)");
+                    last_kind = BLIND;
+                    last_kind_log = current_time();
+                }
                 pbf_press_button(context, BUTTON_A, 100ms, 200ms);
                 presses++;
                 last_blind_press = current_time();
