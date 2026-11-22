@@ -241,19 +241,8 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     , CHARACTER_GROUP("Character", LockMode::LOCK_WHILE_RUNNING)
     , CHARACTER(
         "<b>Character Look:</b><br>"
-        "Which portrait to pick on the LOOKS screen.",
-        {
-            {CharacterLook::Top1,    "top-1",    "Top row, 1st"},
-            {CharacterLook::Top2,    "top-2",    "Top row, 2nd"},
-            {CharacterLook::Top3,    "top-3",    "Top row, 3rd"},
-            {CharacterLook::Top4,    "top-4",    "Top row, 4th"},
-            {CharacterLook::Bottom1, "bottom-1", "Bottom row, 1st"},
-            {CharacterLook::Bottom2, "bottom-2", "Bottom row, 2nd"},
-            {CharacterLook::Bottom3, "bottom-3", "Bottom row, 3rd"},
-            {CharacterLook::Bottom4, "bottom-4", "Bottom row, 4th"},
-        },
-        LockMode::LOCK_WHILE_RUNNING,
-        CharacterLook::Top3
+        "Click the portrait to pick on the LOOKS screen.",
+        2
     )
     , STARTER(
         "<b>Starter:</b>",
@@ -518,7 +507,7 @@ int highlighted_portrait(const ImageViewRGB32& screen, bool& has_marker){
 
 
 void AutoStoryMultiLang::select_character(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    const int target = (int)CHARACTER.get();
+    const int target = (int)CHARACTER.current_value();
     const int target_row = target / CharacterSelectDetector::COLS;
     const int target_col = target % CharacterSelectDetector::COLS;
 

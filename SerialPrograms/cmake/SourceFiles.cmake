@@ -2228,6 +2228,9 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/InferenceTraining/PokemonLZA_GenerateLocationNameOCR.h
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_BattleAIOption.cpp
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_BattleAIOption.h
+    Source/VideoGames/PokemonLZA/Options/PokemonLZA_CharacterPortraitImages.cpp
+    Source/VideoGames/PokemonLZA/Options/PokemonLZA_CharacterPortraitOption.cpp
+    Source/VideoGames/PokemonLZA/Options/PokemonLZA_CharacterPortraitOption.h
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_DonutBerriesOption.cpp
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_DonutBerriesOption.h
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_HyperspaceRewardOption.cpp
@@ -2236,6 +2239,8 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_HyperspaceRewardTable.h
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_ShinyDetectedAction.cpp
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_ShinyDetectedAction.h
+    Source/VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_CharacterPortraitWidget.cpp
+    Source/VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_CharacterPortraitWidget.h
     Source/VideoGames/PokemonLZA/PokemonLZA_Panels.cpp
     Source/VideoGames/PokemonLZA/PokemonLZA_Panels.h
     Source/VideoGames/PokemonLZA/PokemonLZA_Settings.cpp

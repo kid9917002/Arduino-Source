@@ -36,6 +36,7 @@
 #include "NintendoSwitch/Options/NintendoSwitch_StartInGripMenuOption.h"
 #include "CommonFramework/Language.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
+#include "VideoGames/PokemonLZA/Options/PokemonLZA_CharacterPortraitOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
 #include "NintendoSwitch/Options/NintendoSwitch_GoHomeWhenDoneOption.h"
@@ -252,7 +253,7 @@ private:
     EnumDropdownOption<GameLanguage> GAME_LANGUAGE;
     StringOption CHARACTER_NAME;
     GroupOption CHARACTER_GROUP;
-    EnumDropdownOption<CharacterLook> CHARACTER;
+    CharacterPortraitOption CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;
     GoHomeWhenDoneOption GO_HOME_WHEN_DONE;
