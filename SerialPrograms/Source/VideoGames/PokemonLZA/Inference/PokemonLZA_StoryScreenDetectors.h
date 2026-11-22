@@ -95,6 +95,12 @@ bool find_world_quest_marker(const ImageViewRGB32& screen, ImageFloatBox& box);
 bool find_choice_menu_pointer(const ImageViewRGB32& screen, double& pointer_y);
 
 
+//  Mint-green "next" chevron (a hollow V) on the dark boxes in menus, e.g.
+//  Mimi's lines and the "reward received" card in the research list. Means
+//  "press A to continue". Not the text, so it works in every language.
+bool find_green_next_chevron(const ImageViewRGB32& screen);
+
+
 class CutsceneLetterboxDetector : public StaticScreenDetector{
 public:
     CutsceneLetterboxDetector(Color color = COLOR_MAGENTA);

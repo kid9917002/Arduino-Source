@@ -1627,19 +1627,54 @@ void AutoStory::open_research_list(SingleSwitchProgramEnvironment& env, ProContr
     pbf_press_button(context, BUTTON_X, 160ms, 1840ms);    //  main menu
     pbf_press_button(context, BUTTON_X, 160ms, 2840ms);    //  reward list (Mimi's research)
 
-    //  Back out to the overworld. Closing the menu starts the story.
-    for (int c = 0; c < 8; c++){
-        pbf_press_button(context, BUTTON_B, 160ms, 1240ms);
+    //  On the research list, Mimi talks and the reward card pops up. Both
+    //  have a green "next" chevron and need A. Once nothing needs A for a
+    //  while, press B to back out, until the menu is closed (overworld HUD or
+    //  the story starting).
+    const Milliseconds QUIET_BEFORE_B = 2000ms;
+    WallClock start = current_time();
+    WallClock last_activity = current_time();
+    size_t a_presses = 0;
+    size_t b_presses = 0;
+    while (current_time() - start < std::chrono::seconds(120)){
         context.wait_for_all_requests();
         VideoSnapshot snapshot = env.console.video().snapshot();
+
+        if (find_green_next_chevron(snapshot)){
+            pbf_press_button(context, BUTTON_A, 160ms, 640ms);
+            a_presses++;
+            last_activity = current_time();
+            continue;
+        }
+
         CutsceneLetterboxDetector letterbox;
-        if (dialog_on_screen(snapshot) || letterbox.detect(snapshot) || read_party_slot_count(snapshot) >= 1){
-            env.log("Menu closed.", COLOR_BLUE);
+        if (b_presses > 0 && (
+            read_party_slot_count(snapshot) >= 1 ||
+            letterbox.detect(snapshot) ||
+            dialog_on_screen(snapshot)
+        )){
+            env.log(
+                "Menu closed (" + std::to_string(a_presses) + " A, " +
+                std::to_string(b_presses) + " B presses).",
+                COLOR_BLUE
+            );
             env.console.overlay().add_log("Menu closed");
             return;
         }
+
+        if (current_time() - last_activity >= QUIET_BEFORE_B){
+            pbf_press_button(context, BUTTON_B, 160ms, 840ms);
+            b_presses++;
+            last_activity = current_time();
+            continue;
+        }
+        context.wait_for(200ms);
     }
-    env.log("Unable to confirm the menu closed.", COLOR_RED);
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "open_research_list(): Unable to close the menu.",
+        env.console
+    );
 }
 
 

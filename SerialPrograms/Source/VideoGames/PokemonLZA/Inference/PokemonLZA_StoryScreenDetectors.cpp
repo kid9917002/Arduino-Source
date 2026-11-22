@@ -593,6 +593,114 @@ bool find_choice_menu_pointer(const ImageViewRGB32& screen, double& pointer_y){
 
 
 
+bool find_green_next_chevron(const ImageViewRGB32& screen){
+    double width = (double)screen.width();
+    double height = (double)screen.height();
+    if (width < 100 || height < 100){
+        return false;
+    }
+
+    auto is_mint = [](uint32_t pixel){
+        int r = (pixel >> 16) & 0xff;
+        int g = (pixel >>  8) & 0xff;
+        int b = (pixel >>  0) & 0xff;
+        return g >= 180 && g - r >= 60 && b >= 120 && b <= 230 && g - b >= 15;
+    };
+
+    //  Lower 70% of the screen.
+    ImageFloatBox search(0.0, 0.30, 1.0, 0.70);
+    ImageViewRGB32 area = extract_box_reference(screen, search);
+
+    PackedBinaryMatrix matrix = compress_rgb32_to_binary_range(
+        area,
+        0, 200,
+        180, 255,
+        120, 230
+    );
+    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 20);
+
+    for (const WaterfillObject& object : objects){
+        size_t w = object.width();
+        size_t h = object.height();
+        if ((double)w < 0.012 * width || (double)w > 0.03 * width){
+            continue;
+        }
+        if ((double)h < 0.008 * width){
+            continue;
+        }
+        double aspect = (double)w / (double)h;
+        if (aspect < 1.4 || aspect > 2.6){
+            continue;
+        }
+
+        //  Count with the exact color test inside the bounding box.
+        size_t count = 0;
+        size_t top_hits = 0;
+        size_t top_total = 0;
+        size_t bottom_hits = 0;
+        size_t bottom_total = 0;
+        for (size_t y = object.min_y; y < object.max_y; y++){
+            size_t row = y - object.min_y;
+            for (size_t x = object.min_x; x < object.max_x; x++){
+                size_t col = x - object.min_x;
+                bool hit = is_mint(area.pixel(x, y));
+                if (hit){
+                    count++;
+                }
+                bool middle_top = row < std::max<size_t>(1, h / 4) && col >= w * 35 / 100 && col < w * 65 / 100;
+                bool middle_bottom = row >= h * 6 / 10 && col >= w * 4 / 10 && col < w * 6 / 10;
+                if (middle_top){
+                    top_total++;
+                    top_hits += hit ? 1 : 0;
+                }
+                if (middle_bottom){
+                    bottom_total++;
+                    bottom_hits += hit ? 1 : 0;
+                }
+            }
+        }
+        double fill = (double)count / (double)(w * h);
+        if (fill < 0.25 || fill > 0.6){
+            continue;
+        }
+        //  Hollow V: empty in the middle at the top, solid at the tip.
+        if (top_total == 0 || bottom_total == 0){
+            continue;
+        }
+        if ((double)top_hits > 0.1 * (double)top_total){
+            continue;
+        }
+        if ((double)bottom_hits < 0.8 * (double)bottom_total){
+            continue;
+        }
+
+        //  It sits on a dark box.
+        size_t x0 = object.min_x > w / 2 ? object.min_x - w / 2 : 0;
+        size_t x1 = std::min(area.width(), object.max_x + w / 2);
+        size_t y0 = object.min_y > h ? object.min_y - h : 0;
+        size_t y1 = std::min(area.height(), object.max_y + h);
+        double sum = 0;
+        size_t background = 0;
+        for (size_t y = y0; y < y1; y++){
+            for (size_t x = x0; x < x1; x++){
+                uint32_t pixel = area.pixel(x, y);
+                if (is_mint(pixel)){
+                    continue;
+                }
+                sum += (double)(((pixel >> 16) & 0xff) + ((pixel >> 8) & 0xff) + (pixel & 0xff));
+                background++;
+            }
+        }
+        if (background == 0 || sum / (double)background > 300){
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+
+
 CutsceneLetterboxDetector::CutsceneLetterboxDetector(Color color)
     : m_color(color)
     , m_top(0.15, 0.01, 0.50, 0.06)
