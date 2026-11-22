@@ -172,13 +172,18 @@ AutoStory::AutoStory()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
-    , FACE_NORTH_ONLY(
-        "<b>Only Face Camera North:</b><br>"
-        "Turn the camera to face north and stop. Use this right before recording "
-        "ZA-12-5 / ZA-12-6. Normal runs always face north before those two walks "
-        "(catching turns the camera), but not before ZA-12-4.",
+    , CAMERA_BEFORE_WALKS(
+        "<b>Camera Before Wild Zone Walks:</b><br>"
+        "What to do with the camera before the walking macros ZA-12-4 / ZA-12-5 / ZA-12-6. "
+        "Catching turns the camera toward the target, so facing north first makes the "
+        "walks start the same way every time. Record the macros the same way you run them.",
+        {
+            {CameraBeforeWalks::DontTurn,         "dont-turn",      "Don't turn the camera"},
+            {CameraBeforeWalks::FaceNorth,        "face-north",     "Face north before each walk"},
+            {CameraBeforeWalks::FaceNorthAndStop, "face-north-stop","Only face north, then stop (use before recording a walk)"},
+        },
         LockMode::LOCK_WHILE_RUNNING,
-        false
+        CameraBeforeWalks::DontTurn
     )
     , CHARACTER(
         "<b>Character Look:</b><br>"
@@ -215,7 +220,7 @@ AutoStory::AutoStory()
 {
     PA_ADD_OPTION(MACRO_FOLDER);
     PA_ADD_OPTION(START_POINT);
-    PA_ADD_OPTION(FACE_NORTH_ONLY);
+    PA_ADD_OPTION(CAMERA_BEFORE_WALKS);
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
@@ -835,10 +840,11 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  Connect the controller.
     require_player(env.console, context, BUTTON_NONE);
 
-    if (FACE_NORTH_ONLY){
+    if (CAMERA_BEFORE_WALKS.get() == CameraBeforeWalks::FaceNorthAndStop){
         face_camera_north(env, context);
         return;
     }
+    const bool face_north_before_walks = CAMERA_BEFORE_WALKS.get() == CameraBeforeWalks::FaceNorth;
 
     const StartPoint start = START_POINT.get();
 
@@ -990,21 +996,26 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  ZA-12: catch Scatterbug and Weedle without battling.
     if (start <= StartPoint::CatchScatterbug){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Scatterbug.");
-        //  ZA-12-3 always ends in the same spot with the same camera, so no
-        //  camera reset is needed before this walk.
+        if (face_north_before_walks){
+            face_camera_north(env, context);
+        }
         run_macro(env, context, MACRO_WALK_TO_SCATTERBUG);
         catch_wild_pokemon(env, context, "Scatterbug");
     }
     if (start <= StartPoint::CatchWeedle){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
-        face_camera_north(env, context);
+        if (face_north_before_walks){
+            face_camera_north(env, context);
+        }
         run_macro(env, context, MACRO_WALK_TO_WEEDLE);
         catch_wild_pokemon(env, context, "Weedle");
     }
 
     //  ZA-12: leave Wild Zone 1. Stops once outside.
     send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
-    face_camera_north(env, context);
+    if (face_north_before_walks){
+        face_camera_north(env, context);
+    }
     run_macro(env, context, MACRO_WALK_TO_GATE);
     leave_wild_zone(env, context);
 
