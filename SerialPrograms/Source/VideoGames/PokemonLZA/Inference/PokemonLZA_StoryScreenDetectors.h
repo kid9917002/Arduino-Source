@@ -101,6 +101,11 @@ bool find_choice_menu_pointer(const ImageViewRGB32& screen, double& pointer_y);
 bool find_green_next_chevron(const ImageViewRGB32& screen);
 
 
+//  Mable's Research screen (reward / research list): almost the whole
+//  screen is bright teal.
+bool is_research_screen(const ImageViewRGB32& screen);
+
+
 class CutsceneLetterboxDetector : public StaticScreenDetector{
 public:
     CutsceneLetterboxDetector(Color color = COLOR_MAGENTA);

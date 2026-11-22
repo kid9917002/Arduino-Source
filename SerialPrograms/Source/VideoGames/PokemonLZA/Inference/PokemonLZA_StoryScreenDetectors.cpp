@@ -701,6 +701,26 @@ bool find_green_next_chevron(const ImageViewRGB32& screen){
 
 
 
+bool is_research_screen(const ImageViewRGB32& screen){
+    size_t total = 0;
+    size_t teal = 0;
+    for (size_t y = 0; y < screen.height(); y += 4){
+        for (size_t x = 0; x < screen.width(); x += 4){
+            uint32_t pixel = screen.pixel(x, y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            total++;
+            if (g >= 120 && b >= 110 && g - r >= 60 && b - r >= 50){
+                teal++;
+            }
+        }
+    }
+    return total > 0 && teal * 10 >= total * 4;
+}
+
+
+
 CutsceneLetterboxDetector::CutsceneLetterboxDetector(Color color)
     : m_color(color)
     , m_top(0.15, 0.01, 0.50, 0.06)

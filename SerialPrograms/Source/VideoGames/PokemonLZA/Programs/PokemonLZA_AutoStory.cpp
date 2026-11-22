@@ -1622,59 +1622,106 @@ void AutoStory::walk_to_mable(SingleSwitchProgramEnvironment& env, ProController
 
 void AutoStory::open_research_list(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     env.log("Opening Mable's Research (茉蜜姬調查).");
-    env.console.overlay().add_log("Menu: research list");
+    env.console.overlay().add_log("Menu: Mable's Research");
 
     pbf_press_button(context, BUTTON_X, 160ms, 1840ms);    //  main menu
-    pbf_press_button(context, BUTTON_X, 160ms, 2840ms);    //  reward list (Mable's research)
+    pbf_press_button(context, BUTTON_X, 160ms, 840ms);     //  Mable's Research
 
-    //  On the research list, Mable talks and the reward card pops up. Both
-    //  have a green "next" chevron and need A. Once nothing needs A for a
-    //  while, press B to back out, until the menu is closed (overworld HUD or
-    //  the story starting).
-    const Milliseconds QUIET_BEFORE_B = 2000ms;
-    WallClock start = current_time();
-    WallClock last_activity = current_time();
+    //  1. Wait for the research screen (bright teal).
+    {
+        WallClock start = current_time();
+        bool seen = false;
+        while (current_time() - start < std::chrono::seconds(10)){
+            context.wait_for_all_requests();
+            if (is_research_screen(env.console.video().snapshot())){
+                seen = true;
+                break;
+            }
+            context.wait_for(200ms);
+        }
+        if (!seen){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "open_research_list(): Mable's Research did not open.",
+                env.console
+            );
+        }
+        env.log("On Mable's Research.");
+    }
+
+    //  2. On the research screen, Mable talks and the reward card pops up.
+    //     Press A while anything there wants it (green "next" chevron or a
+    //     dialog box). The next line takes a moment to appear, so only press
+    //     B once nothing has needed A for a while.
+    const Milliseconds QUIET_BEFORE_B = 3500ms;
     size_t a_presses = 0;
     size_t b_presses = 0;
-    while (current_time() - start < std::chrono::seconds(120)){
+    {
+        WallClock start = current_time();
+        WallClock last_activity = current_time();
+        int away = 0;
+        while (true){
+            if (current_time() - start > std::chrono::seconds(180)){
+                OperationFailedExceptionWithScreenshot::fire(
+                    ErrorReportMode::NO_ERROR_REPORT,
+                    "open_research_list(): Stuck on Mable's Research.",
+                    env.console
+                );
+            }
+            context.wait_for_all_requests();
+            VideoSnapshot snapshot = env.console.video().snapshot();
+            if (!is_research_screen(snapshot)){
+                if (++away >= 3){
+                    break;  //  Backed out to the main menu.
+                }
+                context.wait_for(200ms);
+                continue;
+            }
+            away = 0;
+            if (find_green_next_chevron(snapshot) || dialog_on_screen(snapshot)){
+                pbf_press_button(context, BUTTON_A, 160ms, 640ms);
+                a_presses++;
+                last_activity = current_time();
+                continue;
+            }
+            if (current_time() - last_activity >= QUIET_BEFORE_B){
+                env.log("Nothing to press A on. Pressing B.");
+                if (b_presses < 3 && snapshot.frame){
+                    std::string path = "AutoStory-research-B-" + std::to_string(b_presses + 1) + ".png";
+                    snapshot.frame->save(path);
+                    env.log("Saved " + path);
+                }
+                pbf_press_button(context, BUTTON_B, 160ms, 840ms);
+                b_presses++;
+                last_activity = current_time();
+                continue;
+            }
+            context.wait_for(200ms);
+        }
+        env.log(
+            "Left Mable's Research (" + std::to_string(a_presses) + " A, " +
+            std::to_string(b_presses) + " B presses).",
+            COLOR_BLUE
+        );
+    }
+
+    //  3. Main menu: B to close it. Closing it starts the story; stop there.
+    for (int c = 0; c < 4; c++){
+        pbf_press_button(context, BUTTON_B, 160ms, 1340ms);
         context.wait_for_all_requests();
         VideoSnapshot snapshot = env.console.video().snapshot();
-
-        if (find_green_next_chevron(snapshot)){
-            pbf_press_button(context, BUTTON_A, 160ms, 640ms);
-            a_presses++;
-            last_activity = current_time();
-            continue;
-        }
-
         CutsceneLetterboxDetector letterbox;
-        if (b_presses > 0 && (
-            read_party_slot_count(snapshot) >= 1 ||
+        if (read_party_slot_count(snapshot) >= 1 ||
             letterbox.detect(snapshot) ||
-            dialog_on_screen(snapshot)
-        )){
-            env.log(
-                "Menu closed (" + std::to_string(a_presses) + " A, " +
-                std::to_string(b_presses) + " B presses).",
-                COLOR_BLUE
-            );
+            dialog_on_screen(snapshot) ||
+            is_black(snapshot, 80, 40)
+        ){
+            env.log("Menu closed.", COLOR_BLUE);
             env.console.overlay().add_log("Menu closed");
             return;
         }
-
-        if (current_time() - last_activity >= QUIET_BEFORE_B){
-            pbf_press_button(context, BUTTON_B, 160ms, 840ms);
-            b_presses++;
-            last_activity = current_time();
-            continue;
-        }
-        context.wait_for(200ms);
     }
-    OperationFailedExceptionWithScreenshot::fire(
-        ErrorReportMode::NO_ERROR_REPORT,
-        "open_research_list(): Unable to close the menu.",
-        env.console
-    );
+    env.log("Unable to confirm the menu closed.", COLOR_RED);
 }
 
 
