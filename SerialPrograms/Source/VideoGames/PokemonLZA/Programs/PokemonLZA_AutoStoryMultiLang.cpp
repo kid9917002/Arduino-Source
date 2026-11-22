@@ -1238,20 +1238,31 @@ namespace{
 //  station story (ZA-01 -> ZA-02-0 only): a light blue "?" book icon in the
 //  lower middle of the screen. Text is not read, so any language works.
 bool movement_tutorial_icon(const ImageViewRGB32& screen){
-    ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.495, 0.773, 0.012, 0.028));
-    size_t hits = 0;
-    size_t total = 0;
-    for (size_t y = 0; y < image.height(); y++){
-        for (size_t x = 0; x < image.width(); x++){
-            uint32_t pixel = image.pixel(x, y);
-            int r = (pixel >> 16) & 0xff;
-            int g = (pixel >>  8) & 0xff;
-            int b = (pixel >>  0) & 0xff;
-            total++;
-            hits += (b >= 200 && g >= 170 && r >= 60 && r <= 190 && b - r >= 50) ? 1 : 0;
+    auto cyan = [&](const ImageFloatBox& box){
+        ImageViewRGB32 image = extract_box_reference(screen, box);
+        size_t hits = 0;
+        size_t total = 0;
+        for (size_t y = 0; y < image.height(); y++){
+            for (size_t x = 0; x < image.width(); x++){
+                uint32_t pixel = image.pixel(x, y);
+                int r = (pixel >> 16) & 0xff;
+                int g = (pixel >>  8) & 0xff;
+                int b = (pixel >>  0) & 0xff;
+                total++;
+                hits += (b >= 200 && g >= 170 && r >= 60 && r <= 190 && b - r >= 50) ? 1 : 0;
+            }
         }
+        return total == 0 ? 0.0 : (double)hits / (double)total;
+    };
+    //  The small icon is light blue, and nothing around it is: a light blue
+    //  Pokemon (Totodile) walking through the spot is much bigger.
+    if (cyan(ImageFloatBox(0.495, 0.773, 0.012, 0.028)) < 0.70){
+        return false;
     }
-    return total != 0 && (double)hits / (double)total >= 0.45;
+    return cyan(ImageFloatBox(0.478, 0.770, 0.012, 0.034)) <= 0.03
+        && cyan(ImageFloatBox(0.512, 0.770, 0.012, 0.034)) <= 0.03
+        && cyan(ImageFloatBox(0.493, 0.745, 0.016, 0.020)) <= 0.03
+        && cyan(ImageFloatBox(0.493, 0.810, 0.016, 0.020)) <= 0.03;
 }
 
 //  The yellow hexagon "!" of a new quest at the top left (any language).
@@ -1647,7 +1658,8 @@ void AutoStoryMultiLang::clear_dialogs(
             continue;
         }
 
-        if (logo_needed && presses > 0 && movement_tutorial_icon(snapshot)){
+        //  Only after the logo video: the icon never shows before it.
+        if (logo_seen && movement_tutorial_icon(snapshot)){
             env.log(
                 "Movement tutorial shown: dialogs cleared (" + std::to_string(presses) + " A presses): " + name,
                 COLOR_BLUE
