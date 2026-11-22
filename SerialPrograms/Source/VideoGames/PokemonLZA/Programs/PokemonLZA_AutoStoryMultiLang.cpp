@@ -2593,9 +2593,13 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
     };
 
     auto move_to = [&](const KeyboardKey& target){
+        //  Sideways first, then up/down: some columns have gaps (e.g. the
+        //  ヤ column on the kana keyboard), so moving along a row and then
+        //  down the target's column is the safe way. If a press does not
+        //  move the cursor, try the other direction next.
         const KeyboardKey* last = nullptr;
-        int same = 0;
-        for (int step = 0; step < 50; step++){
+        bool prefer_vertical = false;
+        for (int step = 0; step < 60; step++){
             const KeyboardKey* key = nullptr;
             int bar_index = -1;
             if (!read_cursor(key, bar_index)){
@@ -2608,12 +2612,22 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
             if (key->label == target.label){
                 return;
             }
-            same = (key == last) ? same + 1 : 0;
-            last = key;
             double dx = target.x - key->x;
             double dy = target.y - key->y;
-            //  Vertical first; if that did not move the cursor, go sideways.
-            bool vertical = std::abs(dy) > 0.035 && (same % 2 == 0 || std::abs(dx) < 0.02);
+            bool need_x = std::abs(dx) > 0.02;
+            bool need_y = std::abs(dy) > 0.035;
+            if (key == last){
+                //  Did not move.
+                if (!need_x){
+                    //  Blocked going straight up/down: step aside first.
+                    pbf_press_dpad(context, DPAD_RIGHT, 80ms, 220ms);
+                    last = nullptr;
+                    continue;
+                }
+                prefer_vertical = !prefer_vertical;
+            }
+            last = key;
+            bool vertical = need_y && (!need_x || prefer_vertical);
             if (vertical){
                 pbf_press_dpad(context, dy > 0 ? DPAD_DOWN : DPAD_UP, 80ms, 220ms);
             }else{
