@@ -27,6 +27,7 @@
 #include "Pokemon/Inference/Pokemon_NameReader.h"
 #include "CommonTools/OCR/OCR_Routines.h"
 #include "CommonTools/OCR/OCR_NumberReader.h"
+#include "CommonTools/Images/SolidColorTest.h"
 #include "CommonFramework/Tools/GlobalThreadPools.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_ButtonDetector.h"
@@ -1166,6 +1167,15 @@ int read_quest_marker_distance(Logger& logger, const ImageViewRGB32& screen, con
         true, true, SIZE_MAX, min_digit_area
     );
     if (number < 0 || number > 999){
+        //  Save a few of these so the number box can be checked.
+        static int saved = 0;
+        if (saved < 3){
+            saved++;
+            std::string path = "AutoStory-distance-" + std::to_string(saved) + ".png";
+            image.save(path);
+            screen.save("AutoStory-distance-full-" + std::to_string(saved) + ".png");
+            logger.log("Saved " + path);
+        }
         return -1;
     }
     return number;
@@ -1440,28 +1450,30 @@ void AutoStory::walk_to_lab(SingleSwitchProgramEnvironment& env, ProControllerCo
         env.log("Entering the lab.");
         pbf_press_button(context, BUTTON_A, 160ms, 840ms);
 
-        //  Inside once the HUD is back without the minimap.
+        //  Going through the door fades to black. Once that happens we are
+        //  inside (the minimap is gone indoors). A scene may play right after.
         WallClock start = current_time();
-        int inside = 0;
+        bool faded = false;
         bool dialog = false;
-        while (current_time() - start < std::chrono::seconds(15)){
+        while (current_time() - start < std::chrono::seconds(8)){
             context.wait_for_all_requests();
             VideoSnapshot snapshot = env.console.video().snapshot();
+            if (is_black(snapshot, 80, 40)){
+                faded = true;
+                break;
+            }
             if (dialog_on_screen(snapshot)){
                 dialog = true;
                 break;
             }
-            double heading = 0;
-            if (read_party_slot_count(snapshot) >= 1 && !read_camera_heading(snapshot, heading)){
-                if (++inside >= 3){
-                    env.log("Inside the lab.", COLOR_BLUE);
-                    env.console.overlay().add_log("Inside the lab");
-                    return;
-                }
-            }else{
-                inside = 0;
-            }
-            context.wait_for(500ms);
+            context.wait_for(200ms);
+        }
+        if (faded){
+            env.log("Went through the lab door.", COLOR_BLUE);
+            clear_dialogs(env, context, "Lab entrance", false);
+            env.log("Inside the lab.", COLOR_BLUE);
+            env.console.overlay().add_log("Inside the lab");
+            return;
         }
         if (dialog){
             clear_dialogs(env, context, "Lab door", false);
@@ -1489,37 +1501,56 @@ void AutoStory::take_lab_elevator(SingleSwitchProgramEnvironment& env, ProContro
             continue;
         }
 
-        //  "A 搭電梯".
+        //  "A 搭電梯". A "which floor?" line comes up with the floor menu.
         pbf_press_button(context, BUTTON_A, 160ms, 340ms);
 
-        //  Floor menu: pick the 2nd row (3F). Judge by the green pointer and
-        //  the white highlight, not the text.
+        //  Floor menu: the pointer starts on the 1st row. Move it down one
+        //  row (2nd row = 3F) and confirm. Judged by the green pointer and the
+        //  white highlight only, not the text.
         WallClock start = current_time();
         bool picked = false;
         bool menu_seen = false;
-        while (current_time() - start < std::chrono::seconds(8)){
+        double first_y = -1;
+        int downs = 0;
+        while (current_time() - start < std::chrono::seconds(12)){
             context.wait_for_all_requests();
             VideoSnapshot snapshot = env.console.video().snapshot();
-            int row = read_choice_menu_row(snapshot);
-            if (row < 0){
+            double y = 0;
+            if (!find_choice_menu_pointer(snapshot, y)){
                 if (!menu_seen && dialog_on_screen(snapshot)){
-                    break;  //  Talked to someone instead.
+                    //  The question text before the menu shows up.
+                    pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+                    continue;
                 }
                 context.wait_for(200ms);
                 continue;
             }
-            menu_seen = true;
-            env.log("Elevator menu: pointer on row " + std::to_string(row + 1) + ".");
-            if (row == 1){
+            if (!menu_seen){
+                menu_seen = true;
+                first_y = y;
+                env.log("Elevator menu: pointer at y = " + std::to_string(y) + ". Moving down one row.");
+                pbf_press_dpad(context, DPAD_DOWN, 160ms, 500ms);
+                downs++;
+                continue;
+            }
+            double moved = y - first_y;
+            env.log("Elevator menu: pointer at y = " + std::to_string(y) + " (moved " + std::to_string(moved) + ").");
+            if (moved > 0.03 && moved < 0.12){
                 pbf_press_button(context, BUTTON_A, 160ms, 840ms);
                 picked = true;
                 break;
             }
-            if (row == 0){
-                pbf_press_dpad(context, DPAD_DOWN, 160ms, 340ms);
-            }else{
-                pbf_press_dpad(context, DPAD_UP, 160ms, 340ms);
+            if (moved <= 0.03 && downs < 3){
+                //  The press was missed.
+                pbf_press_dpad(context, DPAD_DOWN, 160ms, 500ms);
+                downs++;
+                continue;
             }
+            if (moved >= 0.12){
+                pbf_press_dpad(context, DPAD_UP, 160ms, 500ms);
+                continue;
+            }
+            context.wait_for(200ms);
         }
         if (picked){
             env.log("Picked 3F.", COLOR_BLUE);

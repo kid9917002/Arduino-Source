@@ -519,17 +519,14 @@ bool find_world_quest_marker(const ImageViewRGB32& screen, ImageFloatBox& box){
     return best_area > 0;
 }
 
-int read_choice_menu_row(const ImageViewRGB32& screen){
-    const double ROW0_Y = 0.559;
-    const double ROW_PITCH = 0.0735;
-
+bool find_choice_menu_pointer(const ImageViewRGB32& screen, double& pointer_y){
     double width = (double)screen.width();
     double height = (double)screen.height();
     if (width < 100 || height < 100){
-        return -1;
+        return false;
     }
 
-    ImageFloatBox search(0.55, 0.40, 0.35, 0.45);
+    ImageFloatBox search(0.50, 0.25, 0.40, 0.65);
     ImageViewRGB32 area = extract_box_reference(screen, search);
     size_t off_x = (size_t)(search.x * width);
     size_t off_y = (size_t)(search.y * height);
@@ -566,7 +563,7 @@ int read_choice_menu_row(const ImageViewRGB32& screen){
         }
     }
     if (best_area <= 0){
-        return -1;
+        return false;
     }
 
     //  The highlighted row is white right of the pointer.
@@ -587,14 +584,11 @@ int read_choice_menu_row(const ImageViewRGB32& screen){
         }
     }
     if (total == 0 || white < total * 4 / 10){
-        return -1;
+        return false;
     }
 
-    double index = (best_cy - ROW0_Y) / ROW_PITCH;
-    if (index < -0.5 || index > 2.5){
-        return -1;
-    }
-    return (int)std::lround(index);
+    pointer_y = best_cy;
+    return true;
 }
 
 

@@ -89,10 +89,10 @@ bool find_minimap_quest_marker(const ImageViewRGB32& screen, double& dx, double&
 //  Returns the largest one.
 bool find_world_quest_marker(const ImageViewRGB32& screen, ImageFloatBox& box);
 
-//  Small 3-row choice menu on the right (e.g. the lab elevator). Returns the
-//  row (0, 1, 2) that the green pointer is on, or -1 if no menu is up.
-//  Uses only the green pointer and the white highlight, not the text.
-int read_choice_menu_row(const ImageViewRGB32& screen);
+//  Choice menu on the right (e.g. the lab elevator floors). Finds the green
+//  pointer next to the white highlighted row and returns its height on the
+//  screen (0..1). Uses only the pointer and the highlight, not the text.
+bool find_choice_menu_pointer(const ImageViewRGB32& screen, double& pointer_y);
 
 
 class CutsceneLetterboxDetector : public StaticScreenDetector{
