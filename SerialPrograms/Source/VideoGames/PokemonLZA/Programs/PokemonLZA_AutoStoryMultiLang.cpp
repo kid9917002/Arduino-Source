@@ -1214,22 +1214,35 @@ bool overworld_hud(const ImageViewRGB32& screen){
     }
 
     //  Only one Pokemon (e.g. right after the first battle): no small slots
-    //  and no left arrow, but the lead panel has its own green HP bar.
-    ImageViewRGB32 bar = extract_box_reference(screen, ImageFloatBox(0.046, 0.938, 0.024, 0.014));
-    size_t green = 0;
-    size_t bar_total = 0;
-    for (size_t y = 0; y < bar.height(); y++){
-        for (size_t x = 0; x < bar.width(); x++){
-            uint32_t pixel = bar.pixel(x, y);
-            int r = (pixel >> 16) & 0xff;
-            int g = (pixel >>  8) & 0xff;
-            int b = (pixel >>  0) & 0xff;
-            bar_total++;
-            green += (g >= 150 && g >= r + 40 && g >= b + 40) ? 1 : 0;
+    //  and no left arrow, but the lead panel has its own HP bar. The bar can
+    //  be green, yellow or red and partly empty, and its exact height was
+    //  measured on a scaled screenshot, so look for it in a band.
+    if (lead < 0.08){
+        return false;
+    }
+    for (int i = 0; i <= 12; i++){
+        double y = 0.925 + 0.004 * i;
+        ImageViewRGB32 bar = extract_box_reference(screen, ImageFloatBox(0.045, y, 0.014, 0.008));
+        size_t colored = 0;
+        size_t bar_total = 0;
+        for (size_t py = 0; py < bar.height(); py++){
+            for (size_t px = 0; px < bar.width(); px++){
+                uint32_t pixel = bar.pixel(px, py);
+                int r = (pixel >> 16) & 0xff;
+                int g = (pixel >>  8) & 0xff;
+                int b = (pixel >>  0) & 0xff;
+                bar_total++;
+                bool green  = g >= 150 && g >= r + 40 && g >= b + 40;
+                bool yellow = r >= 200 && g >= 150 && b <= 90;
+                bool red    = r >= 190 && g <= 100 && b <= 100;
+                colored += (green || yellow || red) ? 1 : 0;
+            }
+        }
+        if (bar_total != 0 && (double)colored / (double)bar_total >= 0.40){
+            return true;
         }
     }
-    double bar_green = bar_total == 0 ? 0.0 : (double)green / (double)bar_total;
-    return bar_green >= 0.20 && lead >= 0.08;
+    return false;
 }
 
 namespace{
