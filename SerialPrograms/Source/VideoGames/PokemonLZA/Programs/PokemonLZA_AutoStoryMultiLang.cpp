@@ -62,8 +62,6 @@ const char* MACRO_FOLDER_DEFAULT    = "F:\\Game\\za_auto_2\\multi-lang";
 
 //  ZA-00 (multi-language): the game start, the language and the name are
 //  done by the program. These two hold the button presses around the name.
-const char* MACRO_CREATE_CHAR_3_1   = "ZA-00-createChar3-1.json";   //  confirm the look
-const char* MACRO_CREATE_CHAR_3_2   = "ZA-00-createChar3-2.json";   //  after the name
 const char* MACRO_STATION           = "ZA-01-車站-追頑皮熊貓-without-restart.json";
 const char* MACRO_CHASE_PANCHAM     = "ZA-02-0-追頑皮熊貓4-without-restart.json";
 const char* MACRO_STARTER_CHIKORITA = "ZA-02-1-選擇御三家(菊草葉).json";
@@ -1336,8 +1334,34 @@ bool mission_banner(const ImageViewRGB32& screen){
     return true;
 }
 
+//  A white dialog box at the bottom (with or without its "next" mark,
+//  e.g. while the text is still being written or a choice is shown).
+bool white_dialog_box(const ImageViewRGB32& screen){
+    ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.30, 0.80, 0.40, 0.10));
+    size_t white = 0;
+    size_t total = 0;
+    for (size_t y = 0; y < image.height(); y += 2){
+        for (size_t x = 0; x < image.width(); x += 2){
+            uint32_t pixel = image.pixel(x, y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            total++;
+            if (r >= 235 && g >= 235 && b >= 235){
+                white++;
+            }
+        }
+    }
+    return total > 0 && white * 100 >= total * 55;
+}
+
 bool dialog_on_screen(const ImageViewRGB32& screen){
-    if (white_box_chevron(screen) || mission_banner(screen)){
+    if (white_box_chevron(screen) || mission_banner(screen) || white_dialog_box(screen)){
+        return true;
+    }
+    //  A choice (e.g. 是的 / 你说得对!): green pointer + white row.
+    double pointer_y = 0;
+    if (find_choice_menu_pointer(screen, pointer_y)){
         return true;
     }
     FlatWhiteDialogDetector flat_white;
@@ -3031,9 +3055,36 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     if (start <= StartPoint::SelectCharacter){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Creating character.");
         select_character(env, context);
-        run_macro(env, context, MACRO_CREATE_CHAR_3_1);
+        //  Confirm the look; the name keyboard comes up.
+        pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+        {
+            WallClock start = current_time();
+            bool keyboard = false;
+            while (current_time() - start < std::chrono::seconds(10)){
+                context.wait_for_all_requests();
+                double kx = 0;
+                double ky = 0;
+                if (find_keyboard_cursor(env.console.video().snapshot(), kx, ky)){
+                    keyboard = true;
+                    break;
+                }
+                context.wait_for(300ms);
+            }
+            if (!keyboard){
+                env.log("No name keyboard yet. Pressing A again.", COLOR_RED);
+                pbf_press_button(context, BUTTON_A, 160ms, 1840ms);
+            }
+        }
         enter_character_name(env, context);
-        run_macro(env, context, MACRO_CREATE_CHAR_3_2);
+
+        //  After the name (as recorded in ZA-00-createChar3): pick the upper
+        //  answer of the confirmation, then skip the opening video.
+        pbf_wait(context, 1000ms);
+        pbf_press_dpad(context, DPAD_UP, 200ms, 200ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 15000ms);
+        pbf_press_button(context, BUTTON_PLUS, 5000ms, 3000ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 200ms);
+        context.wait_for_all_requests();
     }
 
     //  ZA-01: train station, chase Pancham.
