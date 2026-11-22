@@ -2264,6 +2264,8 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_WeatherFinder.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStory.cpp
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStory.h
+    Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryMultiLang.cpp
+    Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryMultiLang.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_BasicNavigation.cpp
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_BasicNavigation.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_BoxSorter.cpp
