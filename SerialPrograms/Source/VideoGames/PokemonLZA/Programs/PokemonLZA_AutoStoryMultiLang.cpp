@@ -1605,8 +1605,11 @@ void AutoStoryMultiLang::clear_dialogs(
     //  normal quiet time still applies.)
     //  The story is over as soon as the movement tutorial ("?" icon) shows
     //  up; if it is missed, the normal quiet time still ends it.
+    //  After the logo, the Pancham cutscene has gaps longer than the quiet
+    //  time, so only the tutorial icon ends it (or 45 s after the logo).
     const bool logo_needed = m_logo_video_expected && require_dialog;
     bool logo_seen = false;
+    WallClock logo_time = current_time();
 
     //  Waiting for the new quest: once the dialogs are over and the yellow
     //  "!" shows up, the story part is done. (Otherwise the quiet time rule
@@ -1651,6 +1654,7 @@ void AutoStoryMultiLang::clear_dialogs(
             pbf_press_button(context, BUTTON_PLUS, 3000ms, 500ms);
             if (logo_needed && !logo_seen){
                 logo_seen = true;
+                logo_time = current_time();
             }
             activity_seen = true;
             last_activity = current_time();
@@ -1748,6 +1752,9 @@ void AutoStoryMultiLang::clear_dialogs(
         }else if (logo_needed && !logo_seen && now - start < std::chrono::seconds(150)){
             //  The logo video has not played yet: the story is not over.
             //  (Give up after 150 s and fall back to the quiet time.)
+            last_activity = now;
+        }else if (logo_seen && now - logo_time < std::chrono::seconds(45)){
+            //  Pancham cutscene: wait for the movement tutorial icon.
             last_activity = now;
         }else if (now - last_activity >= QUIET_NEEDED){
             if (activity_seen || !require_dialog || waited_long){
