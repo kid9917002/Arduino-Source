@@ -9,6 +9,8 @@
 #include "Common/Cpp/Exceptions.h"
 #include "Common/Cpp/Time.h"
 #include "Common/Cpp/Json/JsonValue.h"
+#include "Common/Cpp/Json/JsonArray.h"
+#include "Common/Cpp/Json/JsonObject.h"
 #include "Common/Cpp/Filesystem/FileIO.h"
 #include "Controllers/ControllerStateTable.h"
 #include "CommonFramework/Exceptions/OperationFailedExceptionWithScreenshot.h"
@@ -23,6 +25,7 @@
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_PushButtons.h"
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_Superscalar.h"
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
+#include "NintendoSwitch/NintendoSwitch_Settings.h"
 #include "Pokemon/Pokemon_Strings.h"
 #include "Pokemon/Inference/Pokemon_NameReader.h"
 #include "CommonTools/OCR/OCR_Routines.h"
@@ -48,8 +51,10 @@ using namespace Pokemon;
 //  Macro files (Turbo Macro JSON) expected in MACRO_FOLDER.
 namespace{
 
-const char* MACRO_CREATE_CHAR_0     = "ZA-00-createChar0.json";
-const char* MACRO_CREATE_CHAR_3     = "ZA-00-createChar3.json";
+//  ZA-00 (multi-language): the game start, the language and the name are
+//  done by the program. These two hold the button presses around the name.
+const char* MACRO_CREATE_CHAR_3_1   = "ZA-00-createChar3-1.json";   //  confirm the look
+const char* MACRO_CREATE_CHAR_3_2   = "ZA-00-createChar3-2.json";   //  after the name
 const char* MACRO_STATION           = "ZA-01-車站-追頑皮熊貓-without-restart.json";
 const char* MACRO_CHASE_PANCHAM     = "ZA-02-0-追頑皮熊貓4-without-restart.json";
 const char* MACRO_STARTER_CHIKORITA = "ZA-02-1-選擇御三家(菊草葉).json";
@@ -149,14 +154,14 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         "<b>Macro Folder:</b><br>"
         "Folder that contains the ZA-00 / ZA-01 / ZA-02 Turbo Macro JSON files.",
         LockMode::LOCK_WHILE_RUNNING,
-        "F:\\Game\\za_auto_2",
-        "F:\\Game\\za_auto_2"
+        "F:\\Game\\za_auto_2\\multi-lang",
+        "F:\\Game\\za_auto_2\\multi-lang"
     )
     , START_POINT(
         "<b>Start From:</b><br>"
         "Which step to start at. The game must already be on the screen that step starts from.",
         {
-            {StartPoint::CreateCharacter, "create-character", "ZA-00 Create character (beginning)"},
+            {StartPoint::CreateCharacter, "create-character", "ZA-00 Start the game + language (beginning, from Home)"},
             {StartPoint::SelectCharacter, "select-character", "ZA-00 LOOKS screen (pick character)"},
             {StartPoint::TrainStation,    "train-station",    "ZA-01 Train station"},
             {StartPoint::ChasePancham,    "chase-pancham",    "ZA-02-0 Chase Pancham"},
@@ -194,11 +199,42 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
-    , LANGUAGE(
+    , PROFILE(
+        "<b>User Profile Position:</b><br>"
+        "The position, from left to right, of the Switch user profile to start the game with "
+        "(only used when starting from ZA-00 Create character).<br>"
+        "If this is set to 0, Switch 1 defaults to the last-used profile, while Switch 2 defaults to the first profile (position 1).",
+        LockMode::LOCK_WHILE_RUNNING,
+        0, 0, 8 // default, min, max
+    )
+    , GAME_LANGUAGE(
         "<b>Game Language:</b><br>"
-        "Used to read the names of wild Pokemon when catching Scatterbug and Weedle.",
-        Pokemon::PokemonNameReader::instance().languages(),
-        LockMode::LOCK_WHILE_RUNNING
+        "Picked on the in-game LANGUAGE screen of a new save, and used to read Pokemon names.",
+        {
+            {GameLanguage::ChineseTraditional, "zh-Hant",  "繁體中文 (Chinese Traditional)"},
+            {GameLanguage::English,            "en",       "English"},
+            {GameLanguage::SpanishSpain,       "es-ES",    "Español (España)"},
+            {GameLanguage::SpanishLatAm,       "es-419",   "Español (Latinoamérica)"},
+            {GameLanguage::French,             "fr",       "Français"},
+            {GameLanguage::German,             "de",       "Deutsch"},
+            {GameLanguage::Italian,            "it",       "Italiano"},
+            {GameLanguage::Japanese,           "ja",       "日本語 (Japanese)"},
+            {GameLanguage::Korean,             "ko",       "한국어 (Korean)"},
+            {GameLanguage::ChineseSimplified,  "zh-Hans",  "简体中文 (Chinese Simplified)"},
+        },
+        LockMode::LOCK_WHILE_RUNNING,
+        GameLanguage::ChineseTraditional
+    )
+    , CHARACTER_NAME(
+        false,
+        "<b>Character Name:</b><br>"
+        "Typed on the Switch keyboard (注音). Write each character with its 注音 reading, "
+        "separated by spaces, e.g. <b>塔:ㄊㄚˇ 小:ㄒㄧㄠˇ</b>. "
+        "The program types the reading one symbol at a time and picks the character from the "
+        "candidate list as soon as it shows up. Up to 6 characters.",
+        LockMode::LOCK_WHILE_RUNNING,
+        "塔:ㄊㄚˇ",
+        "塔:ㄊㄚˇ"
     )
     , WILD_ZONE_WALK(
         "<b>Wild Zone Walking (ZA-12-5 / ZA-12-6):</b><br>"
@@ -258,10 +294,11 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         &NOTIFICATION_ERROR_FATAL,
     })
 {
-    LANGUAGE.set(Language::ChineseTraditional);
-
+    PA_ADD_OPTION(START_LOCATION);
+    PA_ADD_OPTION(PROFILE);
     PA_ADD_OPTION(MACRO_FOLDER);
-    PA_ADD_OPTION(LANGUAGE);
+    PA_ADD_OPTION(GAME_LANGUAGE);
+    PA_ADD_OPTION(CHARACTER_NAME);
     PA_ADD_OPTION(START_POINT);
     PA_ADD_OPTION(WILD_ZONE_WALK);
     PA_ADD_OPTION(CAMERA_MODE);
@@ -322,18 +359,76 @@ void AutoStoryMultiLang::run_macro(
         throw FileException(&env.logger(), PA_CURRENT_FUNCTION, "Macro file is not valid JSON.", path);
     }
 
-    ControllerCommandTable table(
-        ControllerClass::NintendoSwitch_ProController,
-        "",
-        LockMode::LOCK_WHILE_RUNNING
-    );
-    table.load_json(json);
-
     env.log("Running macro: " + filename, COLOR_BLUE);
     env.console.overlay().add_log("Macro: " + filename);
 
-    table.run(context, env.console.controller());
-    context.wait_for_all_requests();
+    //  Multi-language: an entry with the "Capture" button is a marker, not a
+    //  button press. At a marker, press A once (talk / advance) and then
+    //  clear dialogs by detecting them (clear_dialogs()) until the overworld
+    //  is back, instead of recorded A presses whose timing depends on the
+    //  text length of the language. The marker's "ms" is how long the
+    //  overworld must stay quiet to count as done (default 4000 ms).
+    //  The macro is split at the markers and the pieces run in order.
+    const JsonObject& object = json.to_object_throw(path);
+    std::string key = object.get_array("Schedule") != nullptr ? "Schedule" : "history";
+    const JsonArray& entries = object.get_array_throw(key, path);
+
+    auto run_piece = [&](JsonArray&& piece){
+        if (piece.empty()){
+            return;
+        }
+        JsonObject piece_object = object.clone();
+        piece_object[key] = JsonValue(std::move(piece));
+        ControllerCommandTable table(
+            ControllerClass::NintendoSwitch_ProController,
+            "",
+            LockMode::LOCK_WHILE_RUNNING
+        );
+        table.load_json(JsonValue(std::move(piece_object)));
+        table.run(context, env.console.controller());
+        context.wait_for_all_requests();
+    };
+
+    JsonArray piece;
+    size_t markers = 0;
+    for (const JsonValue& entry : entries){
+        const JsonObject* entry_object = entry.to_object();
+        const std::string* buttons = entry_object == nullptr ? nullptr : entry_object->get_string("buttons");
+        if (buttons == nullptr || *buttons != "Capture"){
+            piece.push_back(entry.clone());
+            continue;
+        }
+
+        run_piece(std::move(piece));
+        piece = JsonArray();
+
+        int64_t quiet_ms = 4000;
+        const JsonValue* ms = entry_object->get_value("ms");
+        if (ms != nullptr){
+            if (ms->is_integer()){
+                quiet_ms = ms->to_integer_default(4000);
+            }else if (ms->is_string()){
+                std::string digits;
+                for (char ch : *ms->to_string()){
+                    if (ch >= '0' && ch <= '9'){
+                        digits += ch;
+                    }
+                }
+                if (!digits.empty()){
+                    quiet_ms = std::stoll(digits);
+                }
+            }
+        }
+        quiet_ms = std::max<int64_t>(1000, std::min<int64_t>(quiet_ms, 30000));
+
+        markers++;
+        clear_dialogs(
+            env, context,
+            filename + " #" + std::to_string(markers),
+            true, Milliseconds(quiet_ms), true, std::chrono::seconds(20)
+        );
+    }
+    run_piece(std::move(piece));
 
     stats.macros++;
     env.update_stats();
@@ -713,7 +808,7 @@ void AutoStoryMultiLang::catch_wild_pokemon(
             ImageFloatBox name_box = locked_target_name_box(bar);
             OverlayBoxScope name_overlay(env.console.overlay(), name_box, COLOR_BLUE);
             OCR::StringMatchResult result = Pokemon::PokemonNameReader::instance().read_substring(
-                env.console.logger(), LANGUAGE,
+                env.console.logger(), ocr_language(),
                 extract_box_reference(snapshot, name_box),
                 OCR::WHITE_TEXT_FILTERS()
             );
@@ -1202,18 +1297,26 @@ int read_quest_marker_distance(Logger& logger, const ImageViewRGB32& screen, con
 
 void AutoStoryMultiLang::clear_dialogs(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
-    const std::string& name, bool require_dialog
+    const std::string& name, bool require_dialog,
+    Milliseconds quiet, bool press_first, std::chrono::seconds max_wait_for_dialog
 ){
     env.log("Clearing dialogs: " + name);
     env.console.overlay().add_log("Dialog: " + name);
 
-    const Milliseconds QUIET_NEEDED = 4000ms;
+    const Milliseconds QUIET_NEEDED = quiet;
 
     WallClock start = current_time();
     WallClock last_activity = start;
     size_t presses = 0;
+    bool activity_seen = false;     //  a dialog, or the HUD went away
     bool waited_long = false;
     WallClock last_blind_press = start - std::chrono::seconds(10);
+
+    if (press_first){
+        //  Talk to someone / advance the first line.
+        pbf_press_button(context, BUTTON_A, 100ms, 300ms);
+        last_activity = current_time();
+    }
 
     while (true){
         WallClock now = current_time();
@@ -1231,11 +1334,15 @@ void AutoStoryMultiLang::clear_dialogs(
         if (dialog_on_screen(snapshot)){
             pbf_press_button(context, BUTTON_A, 100ms, 200ms);
             presses++;
+            activity_seen = true;
             last_activity = current_time();
             continue;
         }
 
         bool hud = read_party_slot_count(snapshot) >= 1;
+        if (!hud){
+            activity_seen = true;
+        }
         CutsceneLetterboxDetector letterbox;
         if (!hud && !is_black(snapshot, 80, 40)){
             //  Story scene without the HUD. Some dialog boxes have no fixed
@@ -1251,15 +1358,15 @@ void AutoStoryMultiLang::clear_dialogs(
             //  Fade, loading or a cutscene: not done yet.
             last_activity = current_time();
         }else if (now - last_activity >= QUIET_NEEDED){
-            if (presses > 0 || !require_dialog || waited_long){
+            if (activity_seen || !require_dialog || waited_long){
                 env.log(
                     "Dialogs cleared (" + std::to_string(presses) + " A presses): " + name,
                     COLOR_BLUE
                 );
                 return;
             }
-            if (now - start > std::chrono::seconds(60)){
-                env.log("No dialog showed up in a minute. Moving on: " + name, COLOR_RED);
+            if (now - start > max_wait_for_dialog){
+                env.log("No dialog showed up. Moving on: " + name, COLOR_RED);
                 waited_long = true;
             }
         }
@@ -1743,11 +1850,508 @@ void AutoStoryMultiLang::open_research_list(SingleSwitchProgramEnvironment& env,
 
 
 
+namespace{
+
+//  LANGUAGE screen (new save): 2 columns x 5 rows of tiles. The selected one
+//  is white, the others dark. Returns the selected tile (column-major: left
+//  column 0-4, right column 5-9), or -1 if this is not the LANGUAGE screen.
+int read_language_screen(const ImageViewRGB32& screen){
+    const double COL_X[2] = {0.3309, 0.6666};
+    const double ROW_Y[5] = {0.3549, 0.4544, 0.5530, 0.6536, 0.7532};
+    int white = -1;
+    int dark = 0;
+    for (int c = 0; c < 2; c++){
+        for (int r = 0; r < 5; r++){
+            ImageFloatBox box(COL_X[c] - 0.12, ROW_Y[r] - 0.02, 0.24, 0.04);
+            double sum = image_stats(extract_box_reference(screen, box)).average.sum();
+            if (sum > 500){
+                if (white >= 0){
+                    return -1;
+                }
+                white = c * 5 + r;
+            }else if (sum < 350){
+                dark++;
+            }
+        }
+    }
+    return (white >= 0 && dark >= 8) ? white : -1;
+}
+
+
+//  System keyboard (注音). The selected key / candidate has a colorful glowing
+//  frame. Returns the frame center (0..1) or false if none.
+bool find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
+    size_t width = screen.width();
+    size_t height = screen.height();
+    size_t y0 = (size_t)(0.40 * height);
+    size_t y1 = (size_t)(0.83 * height);
+    std::vector<size_t> xs;
+    std::vector<size_t> ys;
+    for (size_t py = y0; py < y1; py += 2){
+        for (size_t px = (size_t)(0.03 * width); px < (size_t)(0.97 * width); px += 2){
+            uint32_t pixel = screen.pixel(px, py);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            int mx = std::max(r, std::max(g, b));
+            int mn = std::min(r, std::min(g, b));
+            if (mx >= 200 && mx - mn >= 90){
+                xs.push_back(px);
+                ys.push_back(py);
+            }
+        }
+    }
+    if (xs.size() < 40){
+        return false;
+    }
+    std::sort(xs.begin(), xs.end());
+    std::sort(ys.begin(), ys.end());
+    size_t lo = xs.size() * 3 / 100;
+    size_t hi = xs.size() - 1 - lo;
+    x = (xs[lo] + xs[hi]) / 2.0 / (double)width;
+    y = (ys[lo] + ys[hi]) / 2.0 / (double)height;
+    return true;
+}
+
+//  Keyboard layout (注音): 4 rows x 11 keys.
+const double KEY_X0 = 0.1026;
+const double KEY_PITCH_X = 0.0697;
+const double KEY_Y0 = 0.5600;
+const double KEY_PITCH_Y = 0.0701;
+//  Candidate bar above the keys.
+const double CAND_Y = 0.4676;
+const double CAND_X0 = 0.1312;
+const double CAND_PITCH = 0.04055;
+const int CAND_COUNT = 19;
+
+const char* ZHUYIN_ROWS[4][11] = {
+    {"ㄅ", "ㄉ", "ˇ", "ˋ", "ㄓ", "ˊ", "˙", "ㄚ", "ㄞ", "ㄢ", "ㄦ"},
+    {"ㄆ", "ㄊ", "ㄍ", "ㄐ", "ㄔ", "ㄗ", "ㄧ", "ㄛ", "ㄟ", "ㄣ", "，"},
+    {"ㄇ", "ㄋ", "ㄎ", "ㄑ", "ㄕ", "ㄘ", "ㄨ", "ㄜ", "ㄠ", "ㄤ", "。"},
+    {"ㄈ", "ㄌ", "ㄏ", "ㄒ", "ㄖ", "ㄙ", "ㄩ", "ㄝ", "ㄡ", "ㄥ", "？"},
+};
+
+bool find_zhuyin_key(const std::string& symbol, int& row, int& col){
+    for (int r = 0; r < 4; r++){
+        for (int c = 0; c < 11; c++){
+            if (symbol == ZHUYIN_ROWS[r][c]){
+                row = r;
+                col = c;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+//  Split a UTF-8 string into code points.
+std::vector<std::string> utf8_chars(const std::string& text){
+    std::vector<std::string> ret;
+    size_t i = 0;
+    while (i < text.size()){
+        uint8_t ch = (uint8_t)text[i];
+        size_t len = 1;
+        if (ch >= 0xf0){
+            len = 4;
+        }else if (ch >= 0xe0){
+            len = 3;
+        }else if (ch >= 0xc0){
+            len = 2;
+        }
+        ret.emplace_back(text.substr(i, len));
+        i += len;
+    }
+    return ret;
+}
+
+std::string trim_spaces(const std::string& text){
+    std::string ret;
+    for (const std::string& ch : utf8_chars(text)){
+        if (ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "　"){
+            continue;
+        }
+        ret += ch;
+    }
+    return ret;
+}
+
+}
+
+
+
+Language AutoStoryMultiLang::ocr_language() const{
+    switch (GAME_LANGUAGE.get()){
+    case GameLanguage::ChineseTraditional:  return Language::ChineseTraditional;
+    case GameLanguage::English:             return Language::English;
+    case GameLanguage::SpanishSpain:        return Language::Spanish;
+    case GameLanguage::SpanishLatAm:        return Language::Spanish;
+    case GameLanguage::French:              return Language::French;
+    case GameLanguage::German:              return Language::German;
+    case GameLanguage::Italian:             return Language::Italian;
+    case GameLanguage::Japanese:            return Language::Japanese;
+    case GameLanguage::Korean:              return Language::Korean;
+    case GameLanguage::ChineseSimplified:   return Language::ChineseSimplified;
+    }
+    return Language::English;
+}
+
+
+
+void AutoStoryMultiLang::launch_and_pick_language(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Starting the game with user profile " + std::to_string((int)PROFILE) + ".");
+    env.console.overlay().add_log("Start game");
+
+    //  At Home: close the game and start it again with the chosen profile.
+    close_game_from_home(env.console, context);
+    start_game_from_home(
+        env.console, context,
+        ConsoleSettings::instance().TOLERATE_SYSTEM_UPDATE_MENU_FAST,
+        0, PROFILE
+    );
+
+    //  New save: the LANGUAGE screen comes up after the logos.
+    WallClock start = current_time();
+    WallClock last_press = start;
+    while (true){
+        if (current_time() - start > std::chrono::minutes(3)){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "launch_and_pick_language(): The LANGUAGE screen did not show up.",
+                env.console
+            );
+        }
+        context.wait_for_all_requests();
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        if (read_language_screen(snapshot) >= 0){
+            break;
+        }
+        CharacterSelectDetector looks;
+        if (looks.detect(snapshot)){
+            env.log("Already on the LOOKS screen. No LANGUAGE screen (existing save?).", COLOR_RED);
+            return;
+        }
+        //  After a while, press A in case a title screen is waiting.
+        if (current_time() - start > std::chrono::seconds(40) &&
+            current_time() - last_press > std::chrono::seconds(3)
+        ){
+            pbf_press_button(context, BUTTON_A, 100ms, 300ms);
+            last_press = current_time();
+        }
+        context.wait_for(300ms);
+    }
+
+    pick_game_language(env, context);
+
+    //  Then on to the LOOKS screen. Press A slowly through whatever is in
+    //  between (checking for LOOKS before each press).
+    start = current_time();
+    last_press = start;
+    while (true){
+        if (current_time() - start > std::chrono::minutes(4)){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "launch_and_pick_language(): The LOOKS screen did not show up.",
+                env.console
+            );
+        }
+        context.wait_for_all_requests();
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        CharacterSelectDetector looks;
+        if (read_language_screen(snapshot) < 0 && looks.detect(snapshot)){
+            env.log("On the LOOKS screen.", COLOR_BLUE);
+            return;
+        }
+        if (current_time() - last_press > std::chrono::milliseconds(2000)){
+            if (read_language_screen(snapshot) >= 0){
+                //  Still on the LANGUAGE screen (A dropped?): pick again.
+                pick_game_language(env, context);
+            }else{
+                pbf_press_button(context, BUTTON_A, 100ms, 300ms);
+            }
+            last_press = current_time();
+        }
+        context.wait_for(200ms);
+    }
+}
+
+void AutoStoryMultiLang::pick_game_language(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    const int target = (int)GAME_LANGUAGE.get();
+    const int target_col = target / 5;
+    const int target_row = target % 5;
+    env.log("Picking game language #" + std::to_string(target) + " on the LANGUAGE screen.");
+    env.console.overlay().add_log("Language");
+
+    for (int step = 0; step < 30; step++){
+        context.wait_for_all_requests();
+        int current = -1;
+        for (int c = 0; c < 5 && current < 0; c++){
+            current = read_language_screen(env.console.video().snapshot());
+            if (current < 0){
+                context.wait_for(200ms);
+            }
+        }
+        if (current < 0){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "pick_game_language(): Unable to read the LANGUAGE screen.",
+                env.console
+            );
+        }
+        int col = current / 5;
+        int row = current % 5;
+        if (current == target){
+            env.log("Language selected. Confirming.", COLOR_BLUE);
+            pbf_press_button(context, BUTTON_A, 100ms, 900ms);
+            return;
+        }
+        if (col < target_col){
+            pbf_press_dpad(context, DPAD_RIGHT, 100ms, 300ms);
+        }else if (col > target_col){
+            pbf_press_dpad(context, DPAD_LEFT, 100ms, 300ms);
+        }else if (row < target_row){
+            pbf_press_dpad(context, DPAD_DOWN, 100ms, 300ms);
+        }else{
+            pbf_press_dpad(context, DPAD_UP, 100ms, 300ms);
+        }
+    }
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "pick_game_language(): Unable to move to the language.",
+        env.console
+    );
+}
+
+
+
+void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    //  Parse "字:注音 字:注音 ...".
+    struct NameChar{
+        std::string character;
+        std::vector<std::string> reading;
+    };
+    std::vector<NameChar> name;
+    {
+        std::string spec = CHARACTER_NAME;
+        std::vector<std::string> chars = utf8_chars(spec);
+        NameChar current;
+        bool in_reading = false;
+        auto flush = [&](){
+            if (!current.character.empty()){
+                name.emplace_back(std::move(current));
+            }
+            current = NameChar();
+            in_reading = false;
+        };
+        for (const std::string& ch : chars){
+            if (ch == " " || ch == "　" || ch == "," || ch == "，" || ch == "\t"){
+                flush();
+                continue;
+            }
+            if (ch == ":" || ch == "："){
+                in_reading = true;
+                continue;
+            }
+            if (in_reading){
+                current.reading.emplace_back(ch);
+            }else{
+                current.character += ch;
+            }
+        }
+        flush();
+    }
+    if (name.empty() || name.size() > 6){
+        throw UserSetupError(env.logger(), "Character Name: write 1 to 6 characters, e.g. 塔:ㄊㄚˇ");
+    }
+    for (const NameChar& item : name){
+        if (utf8_chars(item.character).size() != 1 || item.reading.empty()){
+            throw UserSetupError(env.logger(), "Character Name: each item must be one character and its 注音, e.g. 塔:ㄊㄚˇ (got \"" + item.character + "\").");
+        }
+        for (const std::string& symbol : item.reading){
+            int r = 0;
+            int c = 0;
+            if (symbol != "ˉ" && !find_zhuyin_key(symbol, r, c)){
+                throw UserSetupError(env.logger(), "Character Name: \"" + symbol + "\" is not a 注音 symbol on the keyboard.");
+            }
+        }
+    }
+
+    env.log("Entering the character name.");
+    env.console.overlay().add_log("Name");
+
+    //  Where is the cursor? Keyboard key (row 0-3, col 0-10) or the
+    //  candidate bar (row -1, col = candidate index).
+    auto read_cursor = [&](int& row, int& col) -> bool{
+        for (int c = 0; c < 5; c++){
+            context.wait_for_all_requests();
+            double x = 0;
+            double y = 0;
+            if (find_keyboard_cursor(env.console.video().snapshot(), x, y)){
+                if (y < (CAND_Y + KEY_Y0) / 2){
+                    row = -1;
+                    col = (int)std::lround((x - CAND_X0) / CAND_PITCH);
+                }else{
+                    row = (int)std::lround((y - KEY_Y0) / KEY_PITCH_Y);
+                    col = (int)std::lround((x - KEY_X0) / KEY_PITCH_X);
+                }
+                return true;
+            }
+            context.wait_for(150ms);
+        }
+        return false;
+    };
+
+    auto fail = [&](const std::string& message){
+        OperationFailedExceptionWithScreenshot::fire(
+            ErrorReportMode::NO_ERROR_REPORT,
+            "enter_character_name(): " + message,
+            env.console
+        );
+    };
+
+    auto move_to_key = [&](int target_row, int target_col){
+        for (int step = 0; step < 40; step++){
+            int row = 0;
+            int col = 0;
+            if (!read_cursor(row, col)){
+                fail("Unable to find the keyboard cursor.");
+            }
+            if (row == target_row && col == target_col){
+                return;
+            }
+            if (row < target_row){
+                pbf_press_dpad(context, DPAD_DOWN, 80ms, 220ms);
+            }else if (row > target_row){
+                pbf_press_dpad(context, DPAD_UP, 80ms, 220ms);
+            }else if (col < target_col){
+                pbf_press_dpad(context, DPAD_RIGHT, 80ms, 220ms);
+            }else{
+                pbf_press_dpad(context, DPAD_LEFT, 80ms, 220ms);
+            }
+        }
+        fail("Unable to move the keyboard cursor.");
+    };
+
+    //  Read the candidate list. Returns the index of the character or -1.
+    int saved_images = 0;
+    auto find_candidate = [&](const std::string& character) -> int{
+        context.wait_for_all_requests();
+        context.wait_for(300ms);
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        std::string all;
+        int found = -1;
+        for (int i = 0; i < CAND_COUNT; i++){
+            ImageFloatBox box(CAND_X0 + CAND_PITCH * i - CAND_PITCH / 2, CAND_Y - 0.028, CAND_PITCH, 0.056);
+            std::string text = trim_spaces(OCR::ocr_read(Language::ChineseTraditional, extract_box_reference(snapshot, box)));
+            all += text.empty() ? std::string("_") : text;
+            all += " ";
+            if (found < 0 && text.find(character) != std::string::npos){
+                found = i;
+            }
+        }
+        env.log("Candidates: " + all);
+        if (found < 0 && saved_images < 3 && snapshot.frame){
+            saved_images++;
+            std::string path = "AutoStoryML-name-candidates-" + std::to_string(saved_images) + ".png";
+            snapshot.frame->save(path);
+            env.log("Saved " + path);
+        }
+        return found;
+    };
+
+    auto pick_candidate = [&](int index){
+        for (int step = 0; step < 40; step++){
+            int row = 0;
+            int col = 0;
+            if (!read_cursor(row, col)){
+                fail("Unable to find the cursor near the candidate list.");
+            }
+            if (row >= 0){
+                pbf_press_dpad(context, DPAD_UP, 80ms, 220ms);
+                continue;
+            }
+            if (col == index){
+                pbf_press_button(context, BUTTON_A, 80ms, 420ms);
+                return;
+            }
+            if (col < index){
+                pbf_press_dpad(context, DPAD_RIGHT, 80ms, 220ms);
+            }else{
+                pbf_press_dpad(context, DPAD_LEFT, 80ms, 220ms);
+            }
+        }
+        fail("Unable to move to the candidate.");
+    };
+
+    for (const NameChar& item : name){
+        env.log("Name character: " + item.character);
+        bool done = false;
+        for (const std::string& symbol : item.reading){
+            if (symbol == "ˉ"){
+                //  First tone: space (Y).
+                pbf_press_button(context, BUTTON_Y, 80ms, 320ms);
+            }else{
+                int row = 0;
+                int col = 0;
+                find_zhuyin_key(symbol, row, col);
+                move_to_key(row, col);
+                pbf_press_button(context, BUTTON_A, 80ms, 320ms);
+            }
+            int index = find_candidate(item.character);
+            if (index >= 0){
+                env.log("Found " + item.character + " at candidate #" + std::to_string(index) + ".", COLOR_BLUE);
+                pick_candidate(index);
+                done = true;
+                break;
+            }
+        }
+        //  Whole reading typed: look at the next pages (R).
+        for (int page = 0; !done && page < 4; page++){
+            pbf_press_button(context, BUTTON_R, 80ms, 320ms);
+            int index = find_candidate(item.character);
+            if (index >= 0){
+                env.log("Found " + item.character + " on page " + std::to_string(page + 2) + ".", COLOR_BLUE);
+                pick_candidate(index);
+                done = true;
+            }
+        }
+        if (!done){
+            fail("Unable to find \"" + item.character + "\" in the candidates. Check its 注音.");
+        }
+        //  Back down to the keys for the next character.
+        int row = 0;
+        int col = 0;
+        if (read_cursor(row, col) && row < 0){
+            pbf_press_dpad(context, DPAD_DOWN, 80ms, 220ms);
+        }
+    }
+
+    //  確定 (+).
+    env.log("Name entered. Confirming.", COLOR_BLUE);
+    pbf_press_button(context, BUTTON_PLUS, 100ms, 900ms);
+    context.wait_for_all_requests();
+}
+
+
+
 void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
+    const StartPoint start = START_POINT.get();
+    const bool from_beginning = start <= StartPoint::CreateCharacter &&
+        CAMERA_MODE.get() != CameraMode::OnlyFaceNorthAndStop;
+
     //  Connect the controller.
-    require_player(env.console, context, BUTTON_NONE);
+    if (START_LOCATION.start_in_grip_menu()){
+        grip_menu_connect_go_home(context);
+        if (!from_beginning){
+            resume_game_from_home(env.console, context);
+        }
+    }else{
+        require_player(env.console, context, BUTTON_NONE);
+        if (from_beginning){
+            go_home(env.console, context);
+        }
+    }
 
     if (CAMERA_MODE.get() == CameraMode::OnlyFaceNorthAndStop){
         env.log("Camera Mode is \"Only face north, then stop\". Not running the story.", COLOR_BLUE);
@@ -1755,16 +2359,17 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         return;
     }
 
-    const StartPoint start = START_POINT.get();
-
-    //  ZA-00: create character.
+    //  ZA-00: start the game, pick the language, create the character.
     if (start <= StartPoint::CreateCharacter){
-        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Creating character.");
-        run_macro(env, context, MACRO_CREATE_CHAR_0);
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Starting the game.");
+        launch_and_pick_language(env, context);
     }
     if (start <= StartPoint::SelectCharacter){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Creating character.");
         select_character(env, context);
-        run_macro(env, context, MACRO_CREATE_CHAR_3);
+        run_macro(env, context, MACRO_CREATE_CHAR_3_1);
+        enter_character_name(env, context);
+        run_macro(env, context, MACRO_CREATE_CHAR_3_2);
     }
 
     //  ZA-01: train station, chase Pancham.

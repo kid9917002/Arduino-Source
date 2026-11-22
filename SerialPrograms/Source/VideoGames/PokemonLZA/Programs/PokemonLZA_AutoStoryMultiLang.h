@@ -28,8 +28,11 @@
 #ifndef PokemonAutomation_PokemonLZA_AutoStoryMultiLang_H
 #define PokemonAutomation_PokemonLZA_AutoStoryMultiLang_H
 
+#include "Common/Cpp/Time.h"
 #include "Common/Cpp/Options/StringOption.h"
-#include "CommonTools/Options/LanguageOCROption.h"
+#include "Common/Cpp/Options/SimpleIntegerOption.h"
+#include "NintendoSwitch/Options/NintendoSwitch_StartInGripMenuOption.h"
+#include "CommonFramework/Language.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
@@ -116,6 +119,21 @@ public:
         OnlyFaceNorthAndStop,   //  only face north, then stop (for recording)
     };
 
+    //  Game language. Order = the in-game LANGUAGE screen, left column top to
+    //  bottom, then right column.
+    enum class GameLanguage{
+        ChineseTraditional, //  繁體中文
+        English,
+        SpanishSpain,       //  Español (España)
+        SpanishLatAm,       //  Español (Latinoamérica)
+        French,
+        German,
+        Italian,
+        Japanese,
+        Korean,
+        ChineseSimplified,  //  简体中文
+    };
+
     enum class Starter{
         Chikorita,  //  菊草葉
         Tepig,      //  暖暖豬
@@ -177,6 +195,20 @@ private:
 
     std::string starter_macro_filename() const;
 
+    //  OCR language for the chosen game language (both Spanish -> Spanish).
+    Language ocr_language() const;
+
+    //  ZA-00 (multi-language): from Home, close the game, start it with the
+    //  chosen user profile, pick the game language on the LANGUAGE screen,
+    //  and wait for the LOOKS screen.
+    void launch_and_pick_language(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+
+    //  On the LANGUAGE screen, move to the chosen language and confirm.
+    void pick_game_language(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+
+    //  Type the character name on the system keyboard (注音) and confirm.
+    void enter_character_name(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+
     //  Lab part (ZA-13). No recorded macros: steer by the yellow "!" quest
     //  marker and clear dialogs by detecting the dialog boxes.
     enum class WalkResult{
@@ -189,7 +221,10 @@ private:
     //  (up to a minute) until at least one dialog has been seen.
     void clear_dialogs(
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
-        const std::string& name, bool require_dialog
+        const std::string& name, bool require_dialog,
+        Milliseconds quiet = std::chrono::milliseconds(4000),
+        bool press_first = false,
+        std::chrono::seconds max_wait_for_dialog = std::chrono::seconds(60)
     );
 
     //  Walk toward the yellow "!" marker. Outdoors it steers by the minimap
@@ -209,7 +244,10 @@ private:
 private:
     StringOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
-    OCR::LanguageOCROption LANGUAGE;
+    StartInGripOrGameOption START_LOCATION;
+    SimpleIntegerOption<uint8_t> PROFILE;
+    EnumDropdownOption<GameLanguage> GAME_LANGUAGE;
+    StringOption CHARACTER_NAME;
     EnumDropdownOption<WildZoneWalk> WILD_ZONE_WALK;
     EnumDropdownOption<CameraMode> CAMERA_MODE;
     EnumDropdownOption<CharacterLook> CHARACTER;
