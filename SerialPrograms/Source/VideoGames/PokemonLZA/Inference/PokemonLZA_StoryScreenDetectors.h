@@ -60,6 +60,11 @@ void make_party_slot_overlays(VideoOverlaySet& items, Color color = COLOR_GREEN)
 //  on screen.
 bool read_camera_heading(const ImageViewRGB32& screen, double& degrees);
 
+//  Find a Weedle (orange body with a pink nose) in the game view. Returns
+//  false if none is found. x/y are normalized screen coordinates. The area
+//  around the player and the HUD are skipped. Only meant for the Wild Zone.
+bool find_weedle(const ImageViewRGB32& screen, double& x, double& y);
+
 
 class CutsceneLetterboxDetector : public StaticScreenDetector{
 public:

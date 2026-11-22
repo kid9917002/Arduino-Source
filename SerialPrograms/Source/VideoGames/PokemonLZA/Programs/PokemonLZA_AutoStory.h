@@ -24,6 +24,7 @@
 #ifndef PokemonAutomation_PokemonLZA_AutoStory_H
 #define PokemonAutomation_PokemonLZA_AutoStory_H
 
+#include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "Common/Cpp/Options/StringOption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
@@ -94,14 +95,6 @@ public:
         LeaveWildZone,      //  ZA-12-6, right after catching Weedle
     };
 
-    //  What to do with the camera before the Wild Zone walking macros
-    //  (ZA-12-4, ZA-12-5, ZA-12-6).
-    enum class CameraBeforeWalks{
-        DontTurn,           //  play the macros as they are
-        FaceNorth,          //  turn the camera north before each one
-        FaceNorthAndStop,   //  only turn north, then stop (for recording)
-    };
-
     enum class Starter{
         Chikorita,  //  菊草葉
         Tepig,      //  暖暖豬
@@ -133,10 +126,18 @@ private:
 
     //  Throw balls at the Pokemon in front of us (no battle) until the party
     //  bar shows one more Pokemon.
+    //  If aim_at_weedle is set, turn the camera to center a Weedle on screen
+    //  before each throw.
     void catch_wild_pokemon(
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
-        const std::string& name
+        const std::string& name,
+        bool aim_at_weedle
     );
+
+    //  Look for a Weedle on screen (turning the camera if needed) and turn
+    //  the camera until it is in the middle, so ZL locks onto it.
+    //  Returns false if none was found.
+    bool aim_at_weedle(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
     //  Press A on the "A 離開" prompt at the Wild Zone gate.
     void leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
@@ -155,7 +156,7 @@ private:
 private:
     StringOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
-    EnumDropdownOption<CameraBeforeWalks> CAMERA_BEFORE_WALKS;
+    BooleanCheckBoxOption FACE_NORTH_ONLY;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;

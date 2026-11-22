@@ -172,18 +172,13 @@ AutoStory::AutoStory()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
-    , CAMERA_BEFORE_WALKS(
-        "<b>Camera Before Wild Zone Walks:</b><br>"
-        "What to do with the camera before the walking macros ZA-12-4 / ZA-12-5 / ZA-12-6. "
-        "Catching turns the camera toward the target, so facing north first makes the "
-        "walks start the same way every time. Record the macros the same way you run them.",
-        {
-            {CameraBeforeWalks::DontTurn,         "dont-turn",      "Don't turn the camera"},
-            {CameraBeforeWalks::FaceNorth,        "face-north",     "Face north before each walk"},
-            {CameraBeforeWalks::FaceNorthAndStop, "face-north-stop","Only face north, then stop (use before recording a walk)"},
-        },
+    , FACE_NORTH_ONLY(
+        "<b>Only Face Camera North:</b><br>"
+        "Turn the camera to face north and stop. Use this right before recording "
+        "ZA-12-5 / ZA-12-6. Normal runs always face north before those two walks "
+        "(catching turns the camera), but not before ZA-12-4.",
         LockMode::LOCK_WHILE_RUNNING,
-        CameraBeforeWalks::DontTurn
+        false
     )
     , CHARACTER(
         "<b>Character Look:</b><br>"
@@ -220,7 +215,7 @@ AutoStory::AutoStory()
 {
     PA_ADD_OPTION(MACRO_FOLDER);
     PA_ADD_OPTION(START_POINT);
-    PA_ADD_OPTION(CAMERA_BEFORE_WALKS);
+    PA_ADD_OPTION(FACE_NORTH_ONLY);
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
@@ -538,13 +533,22 @@ void AutoStory::face_camera_north(SingleSwitchProgramEnvironment& env, ProContro
     };
 
     double heading = 0;
-    for (int iteration = 0; iteration < 20; iteration++){
+    int read_failures = 0;
+    for (int iteration = 0; iteration < 24; iteration++){
         if (!read_heading(heading)){
-            OperationFailedExceptionWithScreenshot::fire(
-                ErrorReportMode::NO_ERROR_REPORT,
-                "face_camera_north(): Unable to read the minimap view cone.",
-                env.console
-            );
+            //  An icon or a popup may be covering the minimap, or the cone
+            //  may be over colors it blends into. Turn a little and retry.
+            read_failures++;
+            env.log("Unable to read the minimap view cone. Turning a bit and retrying.", COLOR_RED);
+            if (read_failures > 6){
+                OperationFailedExceptionWithScreenshot::fire(
+                    ErrorReportMode::NO_ERROR_REPORT,
+                    "face_camera_north(): Unable to read the minimap view cone.",
+                    env.console
+                );
+            }
+            pbf_move_right_joystick(context, {1, 0}, 250ms, 500ms);
+            continue;
         }
 
         double error = wrap(0 - heading);
@@ -582,6 +586,65 @@ void AutoStory::face_camera_north(SingleSwitchProgramEnvironment& env, ProContro
 
 
 
+bool AutoStory::aim_at_weedle(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Looking for Weedle.");
+
+    double x = 0;
+    double y = 0;
+
+    //  Find it. If it is not in view, turn the camera right step by step
+    //  (a full circle at most).
+    bool found = false;
+    for (int step = 0; step < 14; step++){
+        context.wait_for_all_requests();
+        if (find_weedle(env.console.video().snapshot(), x, y)){
+            found = true;
+            break;
+        }
+        pbf_move_right_joystick(context, {1, 0}, 250ms, 500ms);
+    }
+    if (!found){
+        return false;
+    }
+
+    //  Center it. Screen x moves left when the camera turns right. Start
+    //  with a guess for how far it moves per ms of stick and re-measure.
+    double rate = -0.0015;   //  change in normalized x per ms of stick right
+    for (int iteration = 0; iteration < 10; iteration++){
+        double error = x - 0.5;
+        env.log("Weedle at x = " + std::to_string(x) + ", y = " + std::to_string(y));
+        if (std::abs(error) <= 0.04){
+            env.log("Weedle centered.", COLOR_BLUE);
+            env.console.overlay().add_log("Weedle Centered");
+            return true;
+        }
+
+        //  Stick right (+) changes x by `rate` per ms.
+        double push_ms = std::abs(error / rate);
+        push_ms = std::max(30.0, std::min(push_ms, 400.0));
+        double direction = (-error / rate) > 0 ? 1.0 : -1.0;
+        pbf_move_right_joystick(context, {direction, 0}, Milliseconds((int64_t)push_ms), 400ms);
+        context.wait_for_all_requests();
+
+        double new_x = 0;
+        double new_y = 0;
+        if (!find_weedle(env.console.video().snapshot(), new_x, new_y)){
+            env.log("Lost Weedle while turning.", COLOR_RED);
+            return false;
+        }
+        double change = new_x - x;
+        if (std::abs(change) >= 0.01){
+            rate = change / (direction * push_ms);
+        }
+        x = new_x;
+        y = new_y;
+    }
+    env.log("Weedle close to the center.", COLOR_BLUE);
+    return true;
+}
+
+
+
 void AutoStory::throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     env.log("Throwing a ball.", COLOR_BLUE);
     env.console.overlay().add_log("Throw Ball");
@@ -595,7 +658,8 @@ void AutoStory::throw_ball(SingleSwitchProgramEnvironment& env, ProControllerCon
 
 void AutoStory::catch_wild_pokemon(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
-    const std::string& name
+    const std::string& name,
+    bool aim_at_weedle_first
 ){
     env.log("Catching " + name + ".");
     env.console.overlay().add_log("Catch: " + name);
@@ -615,6 +679,9 @@ void AutoStory::catch_wild_pokemon(
 
     for (int attempt = 1; attempt <= 6; attempt++){
         env.log(name + ": throw attempt " + std::to_string(attempt));
+        if (aim_at_weedle_first && !aim_at_weedle(env, context)){
+            env.log("Weedle not found on screen. Throwing straight ahead.", COLOR_RED);
+        }
         throw_ball(env, context);
 
         //  The ball flies, shakes, then the Pokemon shows up in the party
@@ -840,11 +907,10 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  Connect the controller.
     require_player(env.console, context, BUTTON_NONE);
 
-    if (CAMERA_BEFORE_WALKS.get() == CameraBeforeWalks::FaceNorthAndStop){
+    if (FACE_NORTH_ONLY){
         face_camera_north(env, context);
         return;
     }
-    const bool face_north_before_walks = CAMERA_BEFORE_WALKS.get() == CameraBeforeWalks::FaceNorth;
 
     const StartPoint start = START_POINT.get();
 
@@ -996,26 +1062,22 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  ZA-12: catch Scatterbug and Weedle without battling.
     if (start <= StartPoint::CatchScatterbug){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Scatterbug.");
-        if (face_north_before_walks){
-            face_camera_north(env, context);
-        }
+        //  ZA-12-3 always ends in the same spot with the same camera, so no
+        //  camera reset is needed before this walk.
         run_macro(env, context, MACRO_WALK_TO_SCATTERBUG);
-        catch_wild_pokemon(env, context, "Scatterbug");
+        catch_wild_pokemon(env, context, "Scatterbug", false);
     }
     if (start <= StartPoint::CatchWeedle){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
-        if (face_north_before_walks){
-            face_camera_north(env, context);
-        }
+        //  Catching Scatterbug turned the camera. Reset it first.
+        face_camera_north(env, context);
         run_macro(env, context, MACRO_WALK_TO_WEEDLE);
-        catch_wild_pokemon(env, context, "Weedle");
+        catch_wild_pokemon(env, context, "Weedle", true);
     }
 
     //  ZA-12: leave Wild Zone 1. Stops once outside.
     send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
-    if (face_north_before_walks){
-        face_camera_north(env, context);
-    }
+    face_camera_north(env, context);
     run_macro(env, context, MACRO_WALK_TO_GATE);
     leave_wild_zone(env, context);
 
