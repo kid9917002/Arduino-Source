@@ -77,16 +77,13 @@ const char* MACRO_HOTEL_ROOM        = "ZA-05-4-Z飯店-走進202客房.json";
 const char* MACRO_HOTEL_BED         = "ZA-05-5-Z飯店-202房間走向床邊.json";
 const char* MACRO_HOTEL_DOOR        = "ZA-05-6-Z飯店-202房間走向房門.json";
 const char* MACRO_HOTEL_MORNING     = "ZA-05-8-Z飯店-隔天早上起床後出房門到2F電梯門口.json";
-const char* MACRO_ROLL_TUTORIAL     = "ZA-05-9-Z飯店-翻滾教學.json";
 const char* MACRO_ROLL_TO_DOOR      = "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json";
 const char* MACRO_LEAVE_HOTEL       = "ZA-05-11-Z飯店-出ZA飯店.json";
 const char* MACRO_WALK_TO_RIVAL     = "ZA-06-1-走向蓋伊對戰.json";
-const char* MACRO_MAP_TUTORIAL      = "ZA-07-地圖教學.json";
 const char* MACRO_ROCKS_WALK        = "ZA-08-1-往前走觸發岩石劇情.json";
 const char* MACRO_LADDER            = "ZA-09-1-走向大樓梯子與上梯子.json";
 const char* MACRO_JUMP_DOWN         = "ZA-09-3-跳下大樓.json";
 const char* MACRO_WALK_TO_PC        = "ZA-10-2-走向PC.json";
-const char* MACRO_POKEDEX_TUTORIAL  = "ZA-10-3-圖鑑教學.json";
 const char* MACRO_WILD_ZONE_1       = "ZA-11-1-走向WildZone1-1.json";
 const char* MACRO_WILD_ZONE_3       = "ZA-11-3-走向WildZone1-3.json";
 const char* MACRO_FIRST_CATCH       = "ZA-12-1-捕捉1.json";
@@ -1357,6 +1354,35 @@ bool white_dialog_box(const ImageViewRGB32& screen){
     return total > 0 && white * 100 >= total * 55;
 }
 
+//  A full-screen menu (ZA Royale, MAP, POKEDEX, main menu ...) shows a
+//  white "B" button icon at the bottom right to close it.
+bool b_close_screen(const ImageViewRGB32& screen){
+    ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.916, 0.945, 0.022, 0.035));
+    size_t white = 0;
+    size_t dark = 0;
+    size_t total = 0;
+    for (size_t y = 0; y < image.height(); y++){
+        for (size_t x = 0; x < image.width(); x++){
+            uint32_t pixel = image.pixel(x, y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            total++;
+            if (r >= 220 && g >= 220 && b >= 220){
+                white++;
+            }else if (r <= 90 && g <= 90 && b <= 90){
+                dark++;
+            }
+        }
+    }
+    if (total == 0){
+        return false;
+    }
+    double white_ratio = (double)white / (double)total;
+    double dark_ratio = (double)dark / (double)total;
+    return white_ratio >= 0.18 && white_ratio <= 0.60 && dark_ratio >= 0.03;
+}
+
 bool dialog_on_screen(const ImageViewRGB32& screen){
     if (white_box_chevron(screen) || mission_banner(screen) || white_dialog_box(screen)){
         return true;
@@ -1493,6 +1519,17 @@ void AutoStoryMultiLang::clear_dialogs(
         if (dialog_on_screen(snapshot)){
             pbf_press_button(context, BUTTON_A, 100ms, 200ms);
             presses++;
+            activity_seen = true;
+            last_activity = current_time();
+            last_dialog = last_activity;
+            continue;
+        }
+
+        //  A menu screen the story opened (ZA Royale, MAP, POKEDEX...):
+        //  nothing to read on it any more, so close it with B.
+        if (b_close_screen(snapshot)){
+            env.log("Menu screen with a B (close) button. Pressing B.");
+            pbf_press_button(context, BUTTON_B, 100ms, 700ms);
             activity_seen = true;
             last_activity = current_time();
             last_dialog = last_activity;
@@ -3167,7 +3204,8 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     }
     if (start <= StartPoint::RollTutorial){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Roll tutorial.");
-        run_macro(env, context, MACRO_ROLL_TUTORIAL);
+        //  Roll tutorial: dialogs, the ZA Royale screen (closed with B), dialogs.
+        story_dialog(env, context, "ZA-05-9 roll tutorial", 100ms, 400ms);
         run_macro(env, context, MACRO_ROLL_TO_DOOR);
         run_macro(env, context, MACRO_LEAVE_HOTEL);
     }
@@ -3186,7 +3224,8 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  ZA-07 .. ZA-11.
     if (start <= StartPoint::MapTutorial){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Map tutorial.");
-        run_macro(env, context, MACRO_MAP_TUTORIAL);
+        //  Map tutorial: dialogs, the MAP (closed with B), dialogs.
+        story_dialog(env, context, "ZA-07 map tutorial", 200ms, 5700ms);
     }
     if (start <= StartPoint::RockScene){
         run_macro(env, context, MACRO_ROCKS_WALK);
@@ -3201,7 +3240,12 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "PC / Pokedex.");
         story_dialog(env, context, "ZA-10-1 PC scene", 5230ms, 7182ms);
         run_macro(env, context, MACRO_WALK_TO_PC);
-        run_macro(env, context, MACRO_POKEDEX_TUTORIAL);
+        //  Pokedex tutorial: dialogs, X (as told), the POKEDEX / menu
+        //  (closed with B), dialogs.
+        story_dialog(env, context, "ZA-10-3 Pokedex tutorial", 0ms, 1300ms);
+        pbf_press_button(context, BUTTON_X, 200ms, 1100ms);
+        clear_dialogs(env, context, "ZA-10-3 after Pokedex", true, 4000ms, false, std::chrono::seconds(20));
+        pbf_wait(context, 4500ms);
     }
     if (start <= StartPoint::WildZone1){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Wild Zone 1.");
