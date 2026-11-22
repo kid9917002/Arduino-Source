@@ -175,7 +175,8 @@ AutoStory::AutoStory()
     , FACE_NORTH_ONLY(
         "<b>Only Face Camera North:</b><br>"
         "Turn the camera to face north and stop. Use this right before recording "
-        "ZA-12-4 / ZA-12-5 / ZA-12-6, because the program does the same before playing them.",
+        "ZA-12-5 / ZA-12-6. Normal runs always face north before those two walks "
+        "(catching turns the camera), but not before ZA-12-4.",
         LockMode::LOCK_WHILE_RUNNING,
         false
     )
@@ -989,7 +990,8 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  ZA-12: catch Scatterbug and Weedle without battling.
     if (start <= StartPoint::CatchScatterbug){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Scatterbug.");
-        face_camera_north(env, context);
+        //  ZA-12-3 always ends in the same spot with the same camera, so no
+        //  camera reset is needed before this walk.
         run_macro(env, context, MACRO_WALK_TO_SCATTERBUG);
         catch_wild_pokemon(env, context, "Scatterbug");
     }
