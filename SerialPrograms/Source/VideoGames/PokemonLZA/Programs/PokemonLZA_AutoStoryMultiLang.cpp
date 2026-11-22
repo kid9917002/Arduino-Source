@@ -1234,6 +1234,45 @@ bool overworld_hud(const ImageViewRGB32& screen){
 
 namespace{
 
+//  Close-up of Pancham running off with the bag (after the Z-A logo video):
+//  the big white face in the middle and the brown bag above it.
+bool pancham_closeup(const ImageViewRGB32& screen){
+    auto fraction = [&](const ImageFloatBox& box, int kind){
+        ImageViewRGB32 image = extract_box_reference(screen, box);
+        size_t hits = 0;
+        size_t total = 0;
+        for (size_t y = 0; y < image.height(); y++){
+            for (size_t x = 0; x < image.width(); x++){
+                uint32_t pixel = image.pixel(x, y);
+                int r = (pixel >> 16) & 0xff;
+                int g = (pixel >>  8) & 0xff;
+                int b = (pixel >>  0) & 0xff;
+                total++;
+                int lo = std::min(r, std::min(g, b));
+                int hi = std::max(r, std::max(g, b));
+                bool hit = false;
+                switch (kind){
+                case 0:     //  white fur
+                    hit = lo >= 215 && hi - lo <= 25;
+                    break;
+                case 1:     //  black fur
+                    hit = hi <= 60;
+                    break;
+                default:    //  brown bag
+                    hit = r >= 80 && r <= 185 && g >= 25 && g <= 115 && b >= 20 && b <= 90 &&
+                          r - b >= 40 && r - g >= 25;
+                    break;
+                }
+                hits += hit ? 1 : 0;
+            }
+        }
+        return total == 0 ? 0.0 : (double)hits / (double)total;
+    };
+    return fraction(ImageFloatBox(0.36, 0.25, 0.16, 0.25), 0) >= 0.25
+        && fraction(ImageFloatBox(0.33, 0.22, 0.22, 0.35), 1) >= 0.04
+        && fraction(ImageFloatBox(0.47, 0.10, 0.20, 0.33), 2) >= 0.20;
+}
+
 //  The yellow hexagon "!" of a new quest at the top left (any language).
 bool quest_icon(const ImageViewRGB32& screen){
     ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.036, 0.066, 0.014, 0.027));
@@ -1572,8 +1611,14 @@ void AutoStoryMultiLang::clear_dialogs(
     //  Waiting for the logo video: gaps before it do not end the dialogs.
     //  (After it, the Pancham cutscene has no dialog box for a while, so the
     //  normal quiet time still applies.)
+    //  Then Pancham runs off with the bag; once that close-up was seen and
+    //  the line after it was read, 3 s of quiet is enough.
     const bool logo_needed = m_logo_video_expected && require_dialog;
     bool logo_seen = false;
+    WallClock logo_time = current_time();
+    bool pancham_seen = false;
+    WallClock pancham_time = logo_time;
+    bool dialog_after_pancham = false;
 
     //  Waiting for the new quest: once the dialogs are over and the yellow
     //  "!" shows up, the story part is done. (Otherwise the quiet time rule
@@ -1618,6 +1663,7 @@ void AutoStoryMultiLang::clear_dialogs(
             pbf_press_button(context, BUTTON_PLUS, 3000ms, 500ms);
             if (logo_needed && !logo_seen){
                 logo_seen = true;
+                logo_time = current_time();
                 m_logo_video_expected = false;
             }
             activity_seen = true;
@@ -1626,7 +1672,16 @@ void AutoStoryMultiLang::clear_dialogs(
             continue;
         }
 
+        if (logo_seen && !pancham_seen && pancham_closeup(snapshot)){
+            env.log("Pancham ran off with the bag.");
+            pancham_seen = true;
+            pancham_time = current_time();
+        }
+
         if (dialog_on_screen(snapshot)){
+            if (pancham_seen){
+                dialog_after_pancham = true;
+            }
             skips_without_dialog = 0;
             pbf_press_button(context, BUTTON_A, 100ms, 200ms);
             presses++;
@@ -1707,7 +1762,13 @@ void AutoStoryMultiLang::clear_dialogs(
             //  The logo video has not played yet: the story is not over.
             //  (Give up after 150 s and fall back to the quiet time.)
             last_activity = now;
-        }else if (now - last_activity >= QUIET_NEEDED){
+        }else if (logo_seen && !pancham_seen && now - logo_time < std::chrono::seconds(60)){
+            //  The Pancham cutscene has gaps: wait for its close-up.
+            last_activity = now;
+        }else if (pancham_seen && !dialog_after_pancham && now - pancham_time < std::chrono::seconds(20)){
+            //  One more line comes after the close-up.
+            last_activity = now;
+        }else if (now - last_activity >= (dialog_after_pancham ? Milliseconds(3000ms) : QUIET_NEEDED)){
             if (activity_seen || !require_dialog || waited_long){
                 env.log(
                     "Dialogs cleared (" + std::to_string(presses) + " A presses): " + name,
