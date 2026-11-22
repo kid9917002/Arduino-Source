@@ -28,6 +28,7 @@
 #include "CommonTools/OCR/OCR_Routines.h"
 #include "CommonTools/OCR/OCR_NumberReader.h"
 #include "CommonTools/Images/SolidColorTest.h"
+#include "CommonFramework/ImageTools/ImageStats.h"
 #include "CommonFramework/Tools/GlobalThreadPools.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_ButtonDetector.h"
@@ -1131,6 +1132,20 @@ bool dialog_on_screen(const ImageViewRGB32& screen){
         || tutorial.detect(screen);
 }
 
+//  Only meaningful on Mable's Research screen (bright teal): Mable's dark
+//  dialog box at the bottom, or the dark reward card in the middle, is up.
+//  Catches them while the text is still being written, before the "next"
+//  chevron shows.
+bool research_box_up(const ImageViewRGB32& screen){
+    double dialog = image_stats(extract_box_reference(screen, ImageFloatBox(0.30, 0.80, 0.40, 0.06))).average.sum();
+    if (dialog < 260){
+        return true;
+    }
+    double card_left  = image_stats(extract_box_reference(screen, ImageFloatBox(0.33, 0.42, 0.04, 0.12))).average.sum();
+    double card_right = image_stats(extract_box_reference(screen, ImageFloatBox(0.62, 0.62, 0.04, 0.12))).average.sum();
+    return card_left < 400 && card_right < 380;
+}
+
 //  The "A" prompt (進入 / 搭電梯 / 搭話) floats right next to the player.
 const ImageFloatBox LAB_PROMPT_BOX(0.35, 0.25, 0.45, 0.55);
 
@@ -1214,7 +1229,7 @@ void AutoStory::clear_dialogs(
         VideoSnapshot snapshot = env.console.video().snapshot();
 
         if (dialog_on_screen(snapshot)){
-            pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+            pbf_press_button(context, BUTTON_A, 100ms, 200ms);
             presses++;
             last_activity = current_time();
             continue;
@@ -1226,8 +1241,8 @@ void AutoStory::clear_dialogs(
             //  Story scene without the HUD. Some dialog boxes have no fixed
             //  shape (e.g. the jagged white "shout" bubble), so press A
             //  slowly while the HUD is gone. A does nothing in a cutscene.
-            if (current_time() - last_blind_press >= 1200ms){
-                pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+            if (current_time() - last_blind_press >= 700ms){
+                pbf_press_button(context, BUTTON_A, 100ms, 200ms);
                 presses++;
                 last_blind_press = current_time();
             }
@@ -1248,7 +1263,7 @@ void AutoStory::clear_dialogs(
                 waited_long = true;
             }
         }
-        context.wait_for(250ms);
+        context.wait_for(100ms);
     }
 }
 
@@ -1653,7 +1668,7 @@ void AutoStory::open_research_list(SingleSwitchProgramEnvironment& env, ProContr
     //     Press A while anything there wants it (green "next" chevron or a
     //     dialog box). The next line takes a moment to appear, so only press
     //     B once nothing has needed A for a while.
-    const Milliseconds QUIET_BEFORE_B = 3500ms;
+    const Milliseconds QUIET_BEFORE_B = 3000ms;
     size_t a_presses = 0;
     size_t b_presses = 0;
     {
@@ -1678,8 +1693,10 @@ void AutoStory::open_research_list(SingleSwitchProgramEnvironment& env, ProContr
                 continue;
             }
             away = 0;
-            if (find_green_next_chevron(snapshot) || dialog_on_screen(snapshot)){
-                pbf_press_button(context, BUTTON_A, 160ms, 640ms);
+            //  Press A as soon as a box is up (also skips the text animation),
+            //  not only once its "next" mark shows.
+            if (find_green_next_chevron(snapshot) || dialog_on_screen(snapshot) || research_box_up(snapshot)){
+                pbf_press_button(context, BUTTON_A, 100ms, 300ms);
                 a_presses++;
                 last_activity = current_time();
                 continue;
@@ -1696,7 +1713,7 @@ void AutoStory::open_research_list(SingleSwitchProgramEnvironment& env, ProContr
                 last_activity = current_time();
                 continue;
             }
-            context.wait_for(200ms);
+            context.wait_for(100ms);
         }
         env.log(
             "Left Mable's Research (" + std::to_string(a_presses) + " A, " +
