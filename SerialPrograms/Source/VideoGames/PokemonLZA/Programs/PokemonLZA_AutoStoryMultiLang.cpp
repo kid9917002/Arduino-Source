@@ -237,8 +237,8 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         "Up to 6 characters (12 for letter keyboards).<br>"
         "If a Chinese character is not found, give its reading by hand: <b>塔:ㄊㄚˇ</b> (注音) or <b>塔:ta</b> (拼音).",
         LockMode::LOCK_WHILE_RUNNING,
-        "塔",
-        "塔"
+        "塔霓",
+        "塔霓"
     )
     , CHARACTER(
         "<b>Character Look:</b><br>"
@@ -2426,9 +2426,24 @@ void AutoStoryMultiLang::launch_and_pick_language(SingleSwitchProgramEnvironment
             if (read_language_screen(snapshot) >= 0){
                 //  Still on the LANGUAGE screen (A dropped?): pick again.
                 pick_game_language(env, context);
-            }else{
-                pbf_press_button(context, BUTTON_A, 100ms, 300ms);
+                last_press = current_time();
+                continue;
             }
+            //  The LOOKS screen shows no highlighted portrait until the
+            //  stick is touched. Nudge it and look again before pressing A.
+            pbf_move_left_joystick(context, {+1, 0}, 120ms, 0ms);
+            context.wait_for_all_requests();
+            bool looks_seen = false;
+            for (int c = 0; c < 4 && !looks_seen; c++){
+                context.wait_for(250ms);
+                CharacterSelectDetector check;
+                looks_seen = check.detect(env.console.video().snapshot());
+            }
+            if (looks_seen){
+                env.log("On the LOOKS screen.", COLOR_BLUE);
+                return;
+            }
+            pbf_press_button(context, BUTTON_A, 100ms, 300ms);
             last_press = current_time();
         }
         context.wait_for(200ms);
