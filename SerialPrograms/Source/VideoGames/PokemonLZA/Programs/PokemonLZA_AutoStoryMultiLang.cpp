@@ -3232,6 +3232,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  ZA-02: chase Pancham, pick starter.
     if (start <= StartPoint::ChasePancham){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Chasing Pancham.");
+        //  Start walking as soon as the station dialogs are over (the macro
+        //  used to wait a fixed 8 seconds for them).
+        clear_dialogs(env, context, "Before chasing Pancham", false, 1500ms, false, std::chrono::seconds(20));
         run_macro(env, context, MACRO_CHASE_PANCHAM);
     }
     if (start <= StartPoint::ChooseStarter){
