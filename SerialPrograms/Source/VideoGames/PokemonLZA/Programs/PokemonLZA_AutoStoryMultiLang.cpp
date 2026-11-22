@@ -1735,13 +1735,26 @@ void AutoStoryMultiLang::clear_dialogs(
             skips_without_dialog = 0;
         }
         CutsceneLetterboxDetector letterbox;
-        if (!hud && !is_black(snapshot, 80, 40) &&
+        if (m_hud_expected && !hud && !is_black(snapshot, 80, 40) &&
+            current_time() - last_dialog >= std::chrono::seconds(30) &&
+            !letterbox.detect(snapshot)
+        ){
+            //  After the starter, the scenes without the HUD are cutscenes
+            //  that cannot be skipped (videos are skipped by the + recorded in
+            //  the macros), so + is not pressed here. If nothing changes for
+            //  30 s, the HUD is there but was not recognized.
+            env.log("No HUD and no dialog for 30 s: treating this screen as the overworld.", COLOR_RED);
+            hud_fallback = true;
+            last_activity = current_time();
+            continue;
+        }
+        if (!m_hud_expected && !hud && !is_black(snapshot, 80, 40) &&
             current_time() - last_dialog >= 2500ms &&
             current_time() - last_skip >= 8000ms &&
             !letterbox.detect(snapshot)
         ){
-            //  No HUD and no dialog for a while: a video (or a scene with
-            //  nothing to read). Hold + to skip it.
+            //  Before the starter: no HUD and no dialog for a while is a video.
+            //  Hold + to skip it.
             if (m_hud_expected && skips_without_dialog >= 2){
                 env.log("+ did not change anything: treating this screen as the overworld.", COLOR_RED);
                 hud_fallback = true;
