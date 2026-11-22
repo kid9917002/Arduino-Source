@@ -1238,31 +1238,42 @@ namespace{
 //  station story (ZA-01 -> ZA-02-0 only): a light blue "?" book icon in the
 //  lower middle of the screen. Text is not read, so any language works.
 bool movement_tutorial_icon(const ImageViewRGB32& screen){
-    auto cyan = [&](const ImageFloatBox& box){
-        ImageViewRGB32 image = extract_box_reference(screen, box);
+    auto cyan = [&](double x, double y, double w, double h){
+        ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(x, y, w, h));
         size_t hits = 0;
         size_t total = 0;
-        for (size_t y = 0; y < image.height(); y++){
-            for (size_t x = 0; x < image.width(); x++){
-                uint32_t pixel = image.pixel(x, y);
+        for (size_t py = 0; py < image.height(); py++){
+            for (size_t px = 0; px < image.width(); px++){
+                uint32_t pixel = image.pixel(px, py);
                 int r = (pixel >> 16) & 0xff;
                 int g = (pixel >>  8) & 0xff;
                 int b = (pixel >>  0) & 0xff;
                 total++;
-                hits += (b >= 200 && g >= 170 && r >= 60 && r <= 190 && b - r >= 50) ? 1 : 0;
+                hits += (b >= 180 && g >= 140 && r >= 40 && r <= 190 && b - r >= 60 && b >= g) ? 1 : 0;
             }
         }
         return total == 0 ? 0.0 : (double)hits / (double)total;
     };
-    //  The small icon is light blue, and nothing around it is: a light blue
-    //  Pokemon (Totodile) walking through the spot is much bigger.
-    if (cyan(ImageFloatBox(0.495, 0.773, 0.012, 0.028)) < 0.70){
-        return false;
+    //  The icon moves up or down with the number of tutorial lines, so look
+    //  for it around the lower middle. It is a small light blue square with
+    //  nothing light blue around it (a light blue Pokemon is much bigger).
+    for (int i = 0; i <= 30; i++){
+        double y = 0.74 + 0.004 * i;
+        for (int j = 0; j <= 15; j++){
+            double x = 0.475 + 0.003 * j;
+            if (cyan(x, y, 0.010, 0.024) < 0.75){
+                continue;
+            }
+            if (cyan(x - 0.017, y - 0.005, 0.010, 0.034) <= 0.03 &&
+                cyan(x + 0.017, y - 0.005, 0.010, 0.034) <= 0.03 &&
+                cyan(x - 0.003, y - 0.030, 0.016, 0.020) <= 0.03 &&
+                cyan(x - 0.003, y + 0.040, 0.016, 0.020) <= 0.03
+            ){
+                return true;
+            }
+        }
     }
-    return cyan(ImageFloatBox(0.478, 0.770, 0.012, 0.034)) <= 0.03
-        && cyan(ImageFloatBox(0.512, 0.770, 0.012, 0.034)) <= 0.03
-        && cyan(ImageFloatBox(0.493, 0.745, 0.016, 0.020)) <= 0.03
-        && cyan(ImageFloatBox(0.493, 0.810, 0.016, 0.020)) <= 0.03;
+    return false;
 }
 
 //  The yellow hexagon "!" of a new quest at the top left (any language).
