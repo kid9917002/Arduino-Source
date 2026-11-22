@@ -440,6 +440,59 @@ void AutoStoryMultiLang::run_macro(
 
 
 
+namespace{
+
+//  LOOKS screen: which portrait is highlighted (white tile), or -1.
+//  Looks at a strip along the left edge of each tile over its full height
+//  and counts white pixels, so hair reaching into part of the strip (e.g.
+//  the blonde looks) does not hide the highlight.
+int highlighted_portrait(const ImageViewRGB32& screen, bool& has_marker){
+    const double CX[4] = {0.2562, 0.4196, 0.5830, 0.7451};
+    const double CY[2] = {0.4112, 0.6776};
+    const double HW = 0.0623;
+    const double HH = 0.1110;
+    int found = -1;
+    int count = 0;
+    for (int r = 0; r < 2; r++){
+        for (int c = 0; c < 4; c++){
+            ImageFloatBox strip(CX[c] - HW * 0.99, CY[r] - HH * 0.85, HW * 0.11, HH * 1.70);
+            ImageViewRGB32 image = extract_box_reference(screen, strip);
+            size_t white = 0;
+            size_t total = 0;
+            for (size_t y = 0; y < image.height(); y++){
+                for (size_t x = 0; x < image.width(); x++){
+                    uint32_t pixel = image.pixel(x, y);
+                    int pr = (pixel >> 16) & 0xff;
+                    int pg = (pixel >>  8) & 0xff;
+                    int pb = (pixel >>  0) & 0xff;
+                    total++;
+                    if (pr >= 215 && pg >= 215 && pb >= 215){
+                        white++;
+                    }
+                }
+            }
+            if (total > 0 && white * 10 >= total * 6){
+                count++;
+                found = r * 4 + c;
+            }
+        }
+    }
+    if (count != 1){
+        has_marker = false;
+        return -1;
+    }
+    double cx = CX[found % 4];
+    double cy = CY[found / 4];
+    has_marker = CharacterSelectDetector::has_green_marker(
+        screen, ImageFloatBox(cx - 0.020, cy - HH - 0.045, 0.040, 0.040)
+    );
+    return found;
+}
+
+}
+
+
+
 void AutoStoryMultiLang::select_character(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     const int target = (int)CHARACTER.get();
     const int target_row = target / CharacterSelectDetector::COLS;
@@ -468,8 +521,8 @@ void AutoStoryMultiLang::select_character(SingleSwitchProgramEnvironment& env, P
         }
 
         VideoSnapshot snapshot = env.console.video().snapshot();
-        detector.detect(snapshot);
-        int current = detector.highlighted_tile();
+        bool has_marker = false;
+        int current = highlighted_portrait(snapshot, has_marker);
 
         if (current < 0){
             confirmations = 0;
@@ -487,13 +540,10 @@ void AutoStoryMultiLang::select_character(SingleSwitchProgramEnvironment& env, P
         last_highlight = current_time();
 
         if (current == target){
-            if (!detector.highlighted_has_marker()){
-                confirmations = 0;
-                context.wait_for(200ms);
-                continue;
-            }
+            //  The green marker normally shows over the highlighted portrait.
+            //  If it cannot be seen, accept a highlight that stays put.
             confirmations++;
-            if (confirmations >= 3){
+            if (confirmations >= (has_marker ? 3 : 8)){
                 env.log("Character portrait #" + std::to_string(target) + " selected.", COLOR_BLUE);
                 env.console.overlay().add_log("Character Selected");
                 return;
@@ -2386,8 +2436,8 @@ void AutoStoryMultiLang::launch_and_pick_language(SingleSwitchProgramEnvironment
         if (read_language_screen(snapshot) >= 0){
             break;
         }
-        CharacterSelectDetector looks;
-        if (looks.detect(snapshot)){
+        bool looks_marker = false;
+        if (highlighted_portrait(snapshot, looks_marker) >= 0){
             env.log("Already on the LOOKS screen. No LANGUAGE screen (existing save?).", COLOR_RED);
             return;
         }
@@ -2417,8 +2467,8 @@ void AutoStoryMultiLang::launch_and_pick_language(SingleSwitchProgramEnvironment
         }
         context.wait_for_all_requests();
         VideoSnapshot snapshot = env.console.video().snapshot();
-        CharacterSelectDetector looks;
-        if (read_language_screen(snapshot) < 0 && looks.detect(snapshot)){
+        bool looks_marker = false;
+        if (read_language_screen(snapshot) < 0 && highlighted_portrait(snapshot, looks_marker) >= 0){
             env.log("On the LOOKS screen.", COLOR_BLUE);
             return;
         }
@@ -2436,8 +2486,8 @@ void AutoStoryMultiLang::launch_and_pick_language(SingleSwitchProgramEnvironment
             bool looks_seen = false;
             for (int c = 0; c < 4 && !looks_seen; c++){
                 context.wait_for(250ms);
-                CharacterSelectDetector check;
-                looks_seen = check.detect(env.console.video().snapshot());
+                bool check_marker = false;
+                looks_seen = highlighted_portrait(env.console.video().snapshot(), check_marker) >= 0;
             }
             if (looks_seen){
                 env.log("On the LOOKS screen.", COLOR_BLUE);
