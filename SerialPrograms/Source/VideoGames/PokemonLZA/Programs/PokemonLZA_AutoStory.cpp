@@ -172,13 +172,17 @@ AutoStory::AutoStory()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
-    , FACE_NORTH_ONLY(
-        "<b>Only Face Camera North:</b><br>"
-        "Turn the camera to face north and stop. Use this right before recording "
-        "ZA-12-5 / ZA-12-6. Normal runs always face north before those two walks "
-        "(catching turns the camera), but not before ZA-12-4.",
+    , CAMERA_MODE(
+        "<b>Camera Mode:</b><br>"
+        "Catching turns the camera toward the target, so normal runs face the camera north "
+        "before the ZA-12-5 / ZA-12-6 walks. Record those two macros starting from north too: "
+        "pick the second choice, run once, then start recording.",
+        {
+            {CameraMode::FaceNorthBeforeWalks, "face-north-before-walks", "Face north before each walk (ZA-12-5 / 12-6)"},
+            {CameraMode::OnlyFaceNorthAndStop, "only-face-north",         "Only face north, then stop (for recording)"},
+        },
         LockMode::LOCK_WHILE_RUNNING,
-        false
+        CameraMode::FaceNorthBeforeWalks
     )
     , CHARACTER(
         "<b>Character Look:</b><br>"
@@ -215,7 +219,7 @@ AutoStory::AutoStory()
 {
     PA_ADD_OPTION(MACRO_FOLDER);
     PA_ADD_OPTION(START_POINT);
-    PA_ADD_OPTION(FACE_NORTH_ONLY);
+    PA_ADD_OPTION(CAMERA_MODE);
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
@@ -907,7 +911,8 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     //  Connect the controller.
     require_player(env.console, context, BUTTON_NONE);
 
-    if (FACE_NORTH_ONLY){
+    if (CAMERA_MODE.get() == CameraMode::OnlyFaceNorthAndStop){
+        env.log("Camera Mode is \"Only face north, then stop\". Not running the story.", COLOR_BLUE);
         face_camera_north(env, context);
         return;
     }

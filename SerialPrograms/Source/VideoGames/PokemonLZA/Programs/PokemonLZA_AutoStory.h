@@ -24,7 +24,6 @@
 #ifndef PokemonAutomation_PokemonLZA_AutoStory_H
 #define PokemonAutomation_PokemonLZA_AutoStory_H
 
-#include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "Common/Cpp/Options/StringOption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
@@ -95,6 +94,12 @@ public:
         LeaveWildZone,      //  ZA-12-6, right after catching Weedle
     };
 
+    //  Camera handling for the Wild Zone walks.
+    enum class CameraMode{
+        FaceNorthBeforeWalks,   //  normal run: face north before ZA-12-5 / ZA-12-6
+        OnlyFaceNorthAndStop,   //  only face north, then stop (for recording)
+    };
+
     enum class Starter{
         Chikorita,  //  菊草葉
         Tepig,      //  暖暖豬
@@ -156,7 +161,7 @@ private:
 private:
     StringOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
-    BooleanCheckBoxOption FACE_NORTH_ONLY;
+    EnumDropdownOption<CameraMode> CAMERA_MODE;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;
