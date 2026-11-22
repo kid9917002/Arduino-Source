@@ -1216,13 +1216,15 @@ bool overworld_hud(const ImageViewRGB32& screen){
     //  Only one Pokemon (e.g. right after the first battle): no small slots
     //  and no left arrow, but the lead panel has its own HP bar. The bar can
     //  be green, yellow or red and partly empty, and its exact height was
-    //  measured on a scaled screenshot, so look for it in a band.
+    //  measured on a scaled screenshot, so look for it in a band. Only its
+    //  left end is checked (the bar starts at x = 0.043 and empties from the
+    //  right), so even ~10% HP counts.
     if (lead < 0.08){
         return false;
     }
     for (int i = 0; i <= 12; i++){
         double y = 0.925 + 0.004 * i;
-        ImageViewRGB32 bar = extract_box_reference(screen, ImageFloatBox(0.045, y, 0.014, 0.008));
+        ImageViewRGB32 bar = extract_box_reference(screen, ImageFloatBox(0.0435, y, 0.0045, 0.008));
         size_t colored = 0;
         size_t bar_total = 0;
         for (size_t py = 0; py < bar.height(); py++){
