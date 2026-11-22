@@ -1336,22 +1336,30 @@ bool mission_banner(const ImageViewRGB32& screen){
 //  A white dialog box at the bottom (with or without its "next" mark,
 //  e.g. while the text is still being written or a choice is shown).
 bool white_dialog_box(const ImageViewRGB32& screen){
-    ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.30, 0.80, 0.40, 0.10));
-    size_t white = 0;
-    size_t total = 0;
-    for (size_t y = 0; y < image.height(); y += 2){
-        for (size_t x = 0; x < image.width(); x += 2){
-            uint32_t pixel = image.pixel(x, y);
-            int r = (pixel >> 16) & 0xff;
-            int g = (pixel >>  8) & 0xff;
-            int b = (pixel >>  0) & 0xff;
-            total++;
-            if (r >= 235 && g >= 235 && b >= 235){
-                white++;
+    auto white_ratio = [&](const ImageFloatBox& box){
+        ImageViewRGB32 image = extract_box_reference(screen, box);
+        size_t white = 0;
+        size_t total = 0;
+        for (size_t y = 0; y < image.height(); y += 2){
+            for (size_t x = 0; x < image.width(); x += 2){
+                uint32_t pixel = image.pixel(x, y);
+                int r = (pixel >> 16) & 0xff;
+                int g = (pixel >>  8) & 0xff;
+                int b = (pixel >>  0) & 0xff;
+                total++;
+                if (r >= 230 && g >= 230 && b >= 230){
+                    white++;
+                }
             }
         }
+        return total == 0 ? 0.0 : (double)white / (double)total;
+    };
+    //  The box's left margin (never text) is solid white; long lines with
+    //  furigana can cover much of the middle, so check the margin first.
+    if (white_ratio(ImageFloatBox(0.235, 0.80, 0.030, 0.12)) >= 0.80){
+        return true;
     }
-    return total > 0 && white * 100 >= total * 55;
+    return white_ratio(ImageFloatBox(0.30, 0.80, 0.40, 0.10)) >= 0.55;
 }
 
 //  The company logo video (gold emblem on a dark blue vignette) in the
