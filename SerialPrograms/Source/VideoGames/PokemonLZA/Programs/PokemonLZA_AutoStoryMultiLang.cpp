@@ -5,6 +5,7 @@
  */
 
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include "Common/Cpp/Exceptions.h"
 #include "Common/Cpp/Time.h"
@@ -40,6 +41,7 @@
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_StoryScreenDetectors.h"
 #include "VideoGames/PokemonLZA/Programs/PokemonLZA_TrainerBattle.h"
+#include "PokemonLZA_ChineseReadings.h"
 #include "PokemonLZA_AutoStoryMultiLang.h"
 
 namespace PokemonAutomation{
@@ -229,13 +231,14 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     , CHARACTER_NAME(
         false,
         "<b>Character Name:</b><br>"
-        "Typed on the Switch keyboard (注音). Write each character with its 注音 reading, "
-        "separated by spaces, e.g. <b>塔:ㄊㄚˇ 小:ㄒㄧㄠˇ</b>. "
-        "The program types the reading one symbol at a time and picks the character from the "
-        "candidate list as soon as it shows up. Up to 6 characters.",
+        "Just paste the name. It is typed on the keyboard of the Game Language: "
+        "繁體中文 注音 / 简体中文 拼音 (readings looked up automatically, the character is picked from the candidates), "
+        "日本語 ひらがな・カタカナ, 한국어 한글, other languages letters (A-Z, digits). "
+        "Up to 6 characters (12 for letter keyboards).<br>"
+        "If a Chinese character is not found, give its reading by hand: <b>塔:ㄊㄚˇ</b> (注音) or <b>塔:ta</b> (拼音).",
         LockMode::LOCK_WHILE_RUNNING,
-        "塔:ㄊㄚˇ",
-        "塔:ㄊㄚˇ"
+        "塔",
+        "塔"
     )
     , CHARACTER(
         "<b>Character Look:</b><br>"
@@ -1907,70 +1910,217 @@ int read_language_screen(const ImageViewRGB32& screen){
 }
 
 
-//  System keyboard (注音). The selected key / candidate has a colorful glowing
-//  frame. Returns the frame center (0..1) or false if none.
+//  System keyboard. The selected key / candidate has a colorful glowing
+//  frame (blue / purple / pink). Returns the frame center (0..1), or false.
+//  Cyan text (the selected tab, e.g. 注音 / ABC / ア) is not the frame.
 bool find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
+    const size_t STEP = 2;
     size_t width = screen.width();
     size_t height = screen.height();
+    size_t x0 = (size_t)(0.02 * width);
+    size_t x1 = (size_t)(0.98 * width);
     size_t y0 = (size_t)(0.40 * height);
-    size_t y1 = (size_t)(0.83 * height);
-    std::vector<size_t> xs;
-    std::vector<size_t> ys;
-    for (size_t py = y0; py < y1; py += 2){
-        for (size_t px = (size_t)(0.03 * width); px < (size_t)(0.97 * width); px += 2){
-            uint32_t pixel = screen.pixel(px, py);
+    size_t y1 = (size_t)(0.90 * height);
+    size_t gw = (x1 - x0) / STEP;
+    size_t gh = (y1 - y0) / STEP;
+    if (gw == 0 || gh == 0){
+        return false;
+    }
+    std::vector<uint8_t> mask(gw * gh, 0);
+    for (size_t gy = 0; gy < gh; gy++){
+        for (size_t gx = 0; gx < gw; gx++){
+            uint32_t pixel = screen.pixel(x0 + gx * STEP, y0 + gy * STEP);
             int r = (pixel >> 16) & 0xff;
             int g = (pixel >>  8) & 0xff;
             int b = (pixel >>  0) & 0xff;
             int mx = std::max(r, std::max(g, b));
             int mn = std::min(r, std::min(g, b));
-            if (mx >= 200 && mx - mn >= 90){
-                xs.push_back(px);
-                ys.push_back(py);
+            if (mx >= 170 && mx - mn >= 70){
+                mask[gy * gw + gx] = 1;
             }
         }
     }
-    if (xs.size() < 40){
+
+    //  Connected pieces (8-neighbors).
+    size_t min_x = SIZE_MAX;
+    size_t max_x = 0;
+    size_t min_y = SIZE_MAX;
+    size_t max_y = 0;
+    bool found = false;
+    std::vector<size_t> stack;
+    for (size_t start = 0; start < mask.size(); start++){
+        if (mask[start] != 1){
+            continue;
+        }
+        size_t count = 0;
+        size_t bx0 = SIZE_MAX, bx1 = 0, by0 = SIZE_MAX, by1 = 0;
+        double sum_r = 0;
+        double sum_g = 0;
+        stack.clear();
+        stack.push_back(start);
+        mask[start] = 2;
+        while (!stack.empty()){
+            size_t index = stack.back();
+            stack.pop_back();
+            size_t gx = index % gw;
+            size_t gy = index / gw;
+            count++;
+            bx0 = std::min(bx0, gx);
+            bx1 = std::max(bx1, gx);
+            by0 = std::min(by0, gy);
+            by1 = std::max(by1, gy);
+            uint32_t pixel = screen.pixel(x0 + gx * STEP, y0 + gy * STEP);
+            sum_r += (pixel >> 16) & 0xff;
+            sum_g += (pixel >>  8) & 0xff;
+            for (int dy = -1; dy <= 1; dy++){
+                for (int dx = -1; dx <= 1; dx++){
+                    if (dx == 0 && dy == 0){
+                        continue;
+                    }
+                    if ((dx < 0 && gx == 0) || (dy < 0 && gy == 0)){
+                        continue;
+                    }
+                    size_t nx = gx + dx;
+                    size_t ny = gy + dy;
+                    if (nx >= gw || ny >= gh){
+                        continue;
+                    }
+                    size_t n = ny * gw + nx;
+                    if (mask[n] == 1){
+                        mask[n] = 2;
+                        stack.push_back(n);
+                    }
+                }
+            }
+        }
+        double w = (double)(bx1 - bx0 + 1) * STEP / (double)width;
+        double h = (double)(by1 - by0 + 1) * STEP / (double)width;
+        double avg_r = sum_r / (double)count;
+        double avg_g = sum_g / (double)count;
+        if (count * STEP * STEP < 40){
+            continue;
+        }
+        if (std::max(w, h) < 0.020 || std::min(w, h) < 0.002){
+            continue;
+        }
+        if (avg_g >= 185 && avg_r < 115){
+            continue;   //  cyan tab label / underline
+        }
+        found = true;
+        min_x = std::min(min_x, bx0);
+        max_x = std::max(max_x, bx1);
+        min_y = std::min(min_y, by0);
+        max_y = std::max(max_y, by1);
+    }
+    if (!found){
         return false;
     }
-    std::sort(xs.begin(), xs.end());
-    std::sort(ys.begin(), ys.end());
-    size_t lo = xs.size() * 3 / 100;
-    size_t hi = xs.size() - 1 - lo;
-    x = (xs[lo] + xs[hi]) / 2.0 / (double)width;
-    y = (ys[lo] + ys[hi]) / 2.0 / (double)height;
+    x = (x0 + (min_x + max_x) / 2.0 * STEP) / (double)width;
+    y = (y0 + (min_y + max_y) / 2.0 * STEP) / (double)height;
     return true;
 }
 
-//  Keyboard layout (注音): 4 rows x 11 keys.
-const double KEY_X0 = 0.1026;
-const double KEY_PITCH_X = 0.0697;
-const double KEY_Y0 = 0.5600;
-const double KEY_PITCH_Y = 0.0701;
-//  Candidate bar above the keys.
+//  Candidate bar above the keys (Chinese keyboards).
 const double CAND_Y = 0.4676;
 const double CAND_X0 = 0.1312;
 const double CAND_PITCH = 0.04055;
 const int CAND_COUNT = 19;
+const double CAND_BAR_LIMIT_Y = 0.51;   //  cursor above this = candidate bar
 
-const char* ZHUYIN_ROWS[4][11] = {
-    {"ㄅ", "ㄉ", "ˇ", "ˋ", "ㄓ", "ˊ", "˙", "ㄚ", "ㄞ", "ㄢ", "ㄦ"},
-    {"ㄆ", "ㄊ", "ㄍ", "ㄐ", "ㄔ", "ㄗ", "ㄧ", "ㄛ", "ㄟ", "ㄣ", "，"},
-    {"ㄇ", "ㄋ", "ㄎ", "ㄑ", "ㄕ", "ㄘ", "ㄨ", "ㄜ", "ㄠ", "ㄤ", "。"},
-    {"ㄈ", "ㄌ", "ㄏ", "ㄒ", "ㄖ", "ㄙ", "ㄩ", "ㄝ", "ㄡ", "ㄥ", "？"},
+struct KeyboardKey{
+    std::string label;
+    double x;
+    double y;
 };
+using KeyboardLayout = std::vector<KeyboardKey>;
 
-bool find_zhuyin_key(const std::string& symbol, int& row, int& col){
-    for (int r = 0; r < 4; r++){
-        for (int c = 0; c < 11; c++){
-            if (symbol == ZHUYIN_ROWS[r][c]){
-                row = r;
-                col = c;
-                return true;
+void add_grid(
+    KeyboardLayout& layout,
+    const std::vector<std::vector<const char*>>& rows,
+    double x0, double pitch_x, double y0, double pitch_y
+){
+    for (size_t r = 0; r < rows.size(); r++){
+        for (size_t c = 0; c < rows[r].size(); c++){
+            if (rows[r][c] == nullptr || rows[r][c][0] == 0){
+                continue;
             }
+            layout.push_back({rows[r][c], x0 + pitch_x * c, y0 + pitch_y * r});
         }
     }
-    return false;
+}
+
+//  注音 (繁體中文).
+KeyboardLayout make_zhuyin_layout(){
+    KeyboardLayout layout;
+    add_grid(layout, {
+        {"ㄅ", "ㄉ", "ˇ", "ˋ", "ㄓ", "ˊ", "˙", "ㄚ", "ㄞ", "ㄢ", "ㄦ"},
+        {"ㄆ", "ㄊ", "ㄍ", "ㄐ", "ㄔ", "ㄗ", "ㄧ", "ㄛ", "ㄟ", "ㄣ", "，"},
+        {"ㄇ", "ㄋ", "ㄎ", "ㄑ", "ㄕ", "ㄘ", "ㄨ", "ㄜ", "ㄠ", "ㄤ", "。"},
+        {"ㄈ", "ㄌ", "ㄏ", "ㄒ", "ㄖ", "ㄙ", "ㄩ", "ㄝ", "ㄡ", "ㄥ", "？"},
+    }, 0.1026, 0.0697, 0.5600, 0.0701);
+    return layout;
+}
+//  Letters (拼音 / English / French / German / Italian / Spanish).
+KeyboardLayout make_latin_layout(){
+    KeyboardLayout layout;
+    add_grid(layout, {
+        {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-"},
+        {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "/"},
+        {"a", "s", "d", "f", "g", "h", "j", "k", "l", ":", "'"},
+        {"z", "x", "c", "v", "b", "n", "m", ",", ".", "?", "!"},
+    }, 0.1021, 0.0698, 0.5583, 0.0707);
+    return layout;
+}
+//  한글.
+KeyboardLayout make_korean_layout(){
+    KeyboardLayout layout;
+    add_grid(layout, {
+        {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-"},
+        {"ㅂ", "ㅈ", "ㄷ", "ㄱ", "ㅅ", "ㅛ", "ㅕ", "ㅑ", "ㅐ", "ㅔ", "/"},
+        {"ㅁ", "ㄴ", "ㅇ", "ㄹ", "ㅎ", "ㅗ", "ㅓ", "ㅏ", "ㅣ", ":", "'"},
+        {"ㅋ", "ㅌ", "ㅊ", "ㅍ", "ㅠ", "ㅜ", "ㅡ", ",", ".", "?", "!"},
+    }, 0.1021, 0.0698, 0.5583, 0.0707);
+    return layout;
+}
+//  かな (日本語). Columns right to left like the 50-sound table. The same
+//  positions hold hiragana in あ mode and katakana in ア mode; the layout
+//  uses katakana.
+KeyboardLayout make_japanese_layout(){
+    KeyboardLayout layout;
+    add_grid(layout, {
+        {"「", "ワ", "ラ", "ヤ", "マ", "ハ", "ナ", "タ", "サ", "カ", "ア"},
+        {"」", "ヲ", "リ", "",   "ミ", "ヒ", "ニ", "チ", "シ", "キ", "イ"},
+        {"ー", "ン", "ル", "ユ", "ム", "フ", "ヌ", "ツ", "ス", "ク", "ウ"},
+        {"？", "、", "レ", "",   "メ", "ヘ", "ネ", "テ", "セ", "ケ", "エ"},
+        {"！", "。", "ロ", "ヨ", "モ", "ホ", "ノ", "ト", "ソ", "コ", "オ"},
+    }, 0.1979, 0.0603, 0.5593, 0.0722);
+    layout.push_back({"MODE_HIRAGANA", 0.0917, 0.5593});
+    layout.push_back({"MODE_KATAKANA", 0.1380, 0.5593});
+    layout.push_back({"MODE_SMALL", 0.1146, 0.7759});
+    return layout;
+}
+
+const KeyboardKey* find_key(const KeyboardLayout& layout, const std::string& label){
+    for (const KeyboardKey& key : layout){
+        if (key.label == label){
+            return &key;
+        }
+    }
+    return nullptr;
+}
+const KeyboardKey* nearest_key(const KeyboardLayout& layout, double x, double y){
+    const KeyboardKey* best = nullptr;
+    double best_distance = 1e9;
+    for (const KeyboardKey& key : layout){
+        double dx = key.x - x;
+        double dy = (key.y - y) * 0.5625;
+        double distance = dx * dx + dy * dy;
+        if (distance < best_distance){
+            best_distance = distance;
+            best = &key;
+        }
+    }
+    return best;
 }
 
 //  Split a UTF-8 string into code points.
@@ -1992,6 +2142,41 @@ std::vector<std::string> utf8_chars(const std::string& text){
     }
     return ret;
 }
+uint32_t utf8_code_point(const std::string& ch){
+    if (ch.empty()){
+        return 0;
+    }
+    uint8_t c0 = (uint8_t)ch[0];
+    if (c0 < 0x80 || ch.size() == 1){
+        return c0;
+    }
+    if (ch.size() == 2){
+        return ((c0 & 0x1f) << 6) | ((uint8_t)ch[1] & 0x3f);
+    }
+    if (ch.size() == 3){
+        return ((c0 & 0x0f) << 12) | (((uint8_t)ch[1] & 0x3f) << 6) | ((uint8_t)ch[2] & 0x3f);
+    }
+    return ((c0 & 0x07) << 18) | (((uint8_t)ch[1] & 0x3f) << 12) | (((uint8_t)ch[2] & 0x3f) << 6) | ((uint8_t)ch[3] & 0x3f);
+}
+std::string utf8_encode(uint32_t cp){
+    std::string ret;
+    if (cp < 0x80){
+        ret += (char)cp;
+    }else if (cp < 0x800){
+        ret += (char)(0xc0 | (cp >> 6));
+        ret += (char)(0x80 | (cp & 0x3f));
+    }else if (cp < 0x10000){
+        ret += (char)(0xe0 | (cp >> 12));
+        ret += (char)(0x80 | ((cp >> 6) & 0x3f));
+        ret += (char)(0x80 | (cp & 0x3f));
+    }else{
+        ret += (char)(0xf0 | (cp >> 18));
+        ret += (char)(0x80 | ((cp >> 12) & 0x3f));
+        ret += (char)(0x80 | ((cp >> 6) & 0x3f));
+        ret += (char)(0x80 | (cp & 0x3f));
+    }
+    return ret;
+}
 
 std::string trim_spaces(const std::string& text){
     std::string ret;
@@ -2002,6 +2187,153 @@ std::string trim_spaces(const std::string& text){
         ret += ch;
     }
     return ret;
+}
+
+//  Chinese readings: character -> (注音 readings, pinyin readings).
+struct ChineseReading{
+    std::vector<std::string> zhuyin;
+    std::vector<std::string> pinyin;
+};
+const std::map<std::string, ChineseReading>& chinese_readings(){
+    static const std::map<std::string, ChineseReading> table = [](){
+        std::map<std::string, ChineseReading> ret;
+        auto split = [](const std::string& text, char delimiter){
+            std::vector<std::string> parts;
+            std::string current;
+            for (char ch : text){
+                if (ch == delimiter){
+                    parts.push_back(current);
+                    current.clear();
+                }else{
+                    current += ch;
+                }
+            }
+            parts.push_back(current);
+            return parts;
+        };
+        for (size_t i = 0; i < CHINESE_READINGS_COUNT; i++){
+            std::vector<std::string> fields = split(CHINESE_READINGS[i], '|');
+            if (fields.size() != 3){
+                continue;
+            }
+            ChineseReading reading;
+            for (std::string& item : split(fields[1], ',')){
+                if (!item.empty()){
+                    reading.zhuyin.push_back(std::move(item));
+                }
+            }
+            for (std::string& item : split(fields[2], ',')){
+                if (!item.empty()){
+                    reading.pinyin.push_back(std::move(item));
+                }
+            }
+            ret.emplace(fields[0], std::move(reading));
+        }
+        return ret;
+    }();
+    return table;
+}
+
+//  Hangul syllable -> key presses (compatibility jamo; "+" prefix = Shift).
+bool hangul_keys(uint32_t cp, std::vector<std::string>& keys){
+    static const char* L[19] = {"ㄱ","+ㄱ","ㄴ","ㄷ","+ㄷ","ㄹ","ㅁ","ㅂ","+ㅂ","ㅅ","+ㅅ","ㅇ","ㅈ","+ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"};
+    static const char* V[21] = {"ㅏ","ㅐ","ㅑ","+ㅐ","ㅓ","ㅔ","ㅕ","+ㅔ","ㅗ","ㅗ ㅏ","ㅗ ㅐ","ㅗ ㅣ","ㅛ","ㅜ","ㅜ ㅓ","ㅜ ㅔ","ㅜ ㅣ","ㅠ","ㅡ","ㅡ ㅣ","ㅣ"};
+    static const char* T[28] = {"","ㄱ","+ㄱ","ㄱ ㅅ","ㄴ","ㄴ ㅈ","ㄴ ㅎ","ㄷ","ㄹ","ㄹ ㄱ","ㄹ ㅁ","ㄹ ㅂ","ㄹ ㅅ","ㄹ ㅌ","ㄹ ㅍ","ㄹ ㅎ","ㅁ","ㅂ","ㅂ ㅅ","ㅅ","+ㅅ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"};
+    auto push = [&](const char* text){
+        std::string current;
+        for (const char* p = text; ; p++){
+            if (*p == ' ' || *p == 0){
+                if (!current.empty()){
+                    keys.push_back(current);
+                }
+                current.clear();
+                if (*p == 0){
+                    break;
+                }
+            }else{
+                current += *p;
+            }
+        }
+    };
+    if (cp >= 0xac00 && cp <= 0xd7a3){
+        uint32_t s = cp - 0xac00;
+        push(L[s / 588]);
+        push(V[(s % 588) / 28]);
+        push(T[s % 28]);
+        return true;
+    }
+    //  A lone jamo.
+    if (cp >= 0x3131 && cp <= 0x3163){
+        static const std::map<uint32_t, const char*> SHIFTED = {
+            {0x3132, "+ㄱ"}, {0x3138, "+ㄷ"}, {0x3143, "+ㅂ"}, {0x3146, "+ㅅ"}, {0x3149, "+ㅈ"},
+            {0x3152, "+ㅐ"}, {0x3156, "+ㅔ"},
+        };
+        auto iter = SHIFTED.find(cp);
+        keys.push_back(iter != SHIFTED.end() ? iter->second : utf8_encode(cp));
+        return true;
+    }
+    return false;
+}
+
+//  Kana -> (katakana key, hiragana?, presses of 小字゛゜ after it).
+//  小字゛゜ cycles: small -> voiced -> semi-voiced (only the ones that exist).
+bool kana_keys(uint32_t cp, std::string& key, bool& hiragana, int& modifier){
+    hiragana = false;
+    if (cp >= 0x3041 && cp <= 0x3096){
+        hiragana = true;
+        cp += 0x60;     //  to katakana
+    }
+    if (cp == 0x30fc){
+        key = "ー";
+        modifier = 0;
+        return true;
+    }
+    if (cp < 0x30a1 || cp > 0x30f6){
+        return false;
+    }
+    struct Variant{ uint32_t base; int presses; };
+    static const std::map<uint32_t, Variant> VARIANTS = [](){
+        std::map<uint32_t, Variant> ret;
+        //  Small vowels / small ya yu yo / small wa: 1 press.
+        const uint32_t small[] = {0x30a1, 0x30a3, 0x30a5, 0x30a7, 0x30a9, 0x30e3, 0x30e5, 0x30e7, 0x30ee};
+        for (uint32_t s : small){
+            ret[s] = {s + 1, 1};
+        }
+        //  ッ: small (1), ヅ: voiced (2).
+        ret[0x30c3] = {0x30c4, 1};
+        ret[0x30c5] = {0x30c4, 2};
+        //  ヴ: ゥ (1) then ヴ (2).
+        ret[0x30f4] = {0x30a6, 2};
+        //  カ..ド voiced: base + 1 (1 press). Skip ツ handled above.
+        const uint32_t voiced_k[] = {
+            0x30ac, 0x30ae, 0x30b0, 0x30b2, 0x30b4,     //  ガギグゲゴ
+            0x30b6, 0x30b8, 0x30ba, 0x30bc, 0x30be,     //  ザジズゼゾ
+            0x30c0, 0x30c2, 0x30c7, 0x30c9,             //  ダヂデド
+        };
+        for (uint32_t s : voiced_k){
+            ret[s] = {s - 1, 1};
+        }
+        //  ハ row: バ (1), パ (2).
+        const uint32_t ha[] = {0x30cf, 0x30d2, 0x30d5, 0x30d8, 0x30db};
+        for (uint32_t h : ha){
+            ret[h + 1] = {h, 1};
+            ret[h + 2] = {h, 2};
+        }
+        return ret;
+    }();
+    auto iter = VARIANTS.find(cp);
+    uint32_t base = cp;
+    modifier = 0;
+    if (iter != VARIANTS.end()){
+        base = iter->second.base;
+        modifier = iter->second.presses;
+    }
+    if (base == 0x30f2){
+        key = "ヲ";
+    }else{
+        key = utf8_encode(base);
+    }
+    return true;
 }
 
 }
@@ -2153,81 +2485,31 @@ void AutoStoryMultiLang::pick_game_language(SingleSwitchProgramEnvironment& env,
 
 
 void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    //  Parse "字:注音 字:注音 ...".
-    struct NameChar{
-        std::string character;
-        std::vector<std::string> reading;
-    };
-    std::vector<NameChar> name;
-    {
-        std::string spec = CHARACTER_NAME;
-        std::vector<std::string> chars = utf8_chars(spec);
-        NameChar current;
-        bool in_reading = false;
-        auto flush = [&](){
-            if (!current.character.empty()){
-                name.emplace_back(std::move(current));
-            }
-            current = NameChar();
-            in_reading = false;
-        };
-        for (const std::string& ch : chars){
-            if (ch == " " || ch == "　" || ch == "," || ch == "，" || ch == "\t"){
-                flush();
-                continue;
-            }
-            if (ch == ":" || ch == "："){
-                in_reading = true;
-                continue;
-            }
-            if (in_reading){
-                current.reading.emplace_back(ch);
-            }else{
-                current.character += ch;
-            }
-        }
-        flush();
+    enum class Keyboard{ Zhuyin, Pinyin, Japanese, Korean, Latin };
+    Keyboard keyboard = Keyboard::Latin;
+    Language candidate_language = Language::ChineseTraditional;
+    switch (GAME_LANGUAGE.get()){
+    case GameLanguage::ChineseTraditional:
+        keyboard = Keyboard::Zhuyin;
+        break;
+    case GameLanguage::ChineseSimplified:
+        keyboard = Keyboard::Pinyin;
+        candidate_language = Language::ChineseSimplified;
+        break;
+    case GameLanguage::Japanese:
+        keyboard = Keyboard::Japanese;
+        break;
+    case GameLanguage::Korean:
+        keyboard = Keyboard::Korean;
+        break;
+    default:
+        keyboard = Keyboard::Latin;
     }
-    if (name.empty() || name.size() > 6){
-        throw UserSetupError(env.logger(), "Character Name: write 1 to 6 characters, e.g. 塔:ㄊㄚˇ");
-    }
-    for (const NameChar& item : name){
-        if (utf8_chars(item.character).size() != 1 || item.reading.empty()){
-            throw UserSetupError(env.logger(), "Character Name: each item must be one character and its 注音, e.g. 塔:ㄊㄚˇ (got \"" + item.character + "\").");
-        }
-        for (const std::string& symbol : item.reading){
-            int r = 0;
-            int c = 0;
-            if (symbol != "ˉ" && !find_zhuyin_key(symbol, r, c)){
-                throw UserSetupError(env.logger(), "Character Name: \"" + symbol + "\" is not a 注音 symbol on the keyboard.");
-            }
-        }
-    }
-
-    env.log("Entering the character name.");
-    env.console.overlay().add_log("Name");
-
-    //  Where is the cursor? Keyboard key (row 0-3, col 0-10) or the
-    //  candidate bar (row -1, col = candidate index).
-    auto read_cursor = [&](int& row, int& col) -> bool{
-        for (int c = 0; c < 5; c++){
-            context.wait_for_all_requests();
-            double x = 0;
-            double y = 0;
-            if (find_keyboard_cursor(env.console.video().snapshot(), x, y)){
-                if (y < (CAND_Y + KEY_Y0) / 2){
-                    row = -1;
-                    col = (int)std::lround((x - CAND_X0) / CAND_PITCH);
-                }else{
-                    row = (int)std::lround((y - KEY_Y0) / KEY_PITCH_Y);
-                    col = (int)std::lround((x - KEY_X0) / KEY_PITCH_X);
-                }
-                return true;
-            }
-            context.wait_for(150ms);
-        }
-        return false;
-    };
+    const KeyboardLayout layout =
+        keyboard == Keyboard::Zhuyin   ? make_zhuyin_layout() :
+        keyboard == Keyboard::Japanese ? make_japanese_layout() :
+        keyboard == Keyboard::Korean   ? make_korean_layout() :
+        make_latin_layout();
 
     auto fail = [&](const std::string& message){
         OperationFailedExceptionWithScreenshot::fire(
@@ -2237,30 +2519,104 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
         );
     };
 
-    auto move_to_key = [&](int target_row, int target_col){
-        for (int step = 0; step < 40; step++){
-            int row = 0;
-            int col = 0;
-            if (!read_cursor(row, col)){
-                fail("Unable to find the keyboard cursor.");
+    //  Parse the name. A "字:注音" item gives a reading by hand (Chinese).
+    struct NameChar{
+        std::string character;
+        std::vector<std::string> manual_reading;    //  注音 / pinyin symbols
+    };
+    std::vector<NameChar> name;
+    {
+        std::vector<std::string> chars = utf8_chars(std::string(CHARACTER_NAME));
+        for (size_t i = 0; i < chars.size(); i++){
+            const std::string& ch = chars[i];
+            if (ch == "\t" || ch == "\r" || ch == "\n"){
+                continue;
             }
-            if (row == target_row && col == target_col){
-                return;
+            if ((ch == ":" || ch == "：") && !name.empty() && keyboard != Keyboard::Latin){
+                //  Reading by hand for the previous character, up to a space.
+                i++;
+                while (i < chars.size() && chars[i] != " " && chars[i] != "　" && chars[i] != "," && chars[i] != "，"){
+                    name.back().manual_reading.push_back(chars[i]);
+                    i++;
+                }
+                continue;
             }
-            if (row < target_row){
-                pbf_press_dpad(context, DPAD_DOWN, 80ms, 220ms);
-            }else if (row > target_row){
-                pbf_press_dpad(context, DPAD_UP, 80ms, 220ms);
-            }else if (col < target_col){
-                pbf_press_dpad(context, DPAD_RIGHT, 80ms, 220ms);
-            }else{
-                pbf_press_dpad(context, DPAD_LEFT, 80ms, 220ms);
+            if ((ch == " " || ch == "　" || ch == "," || ch == "，") && keyboard != Keyboard::Latin){
+                continue;
             }
+            name.push_back({ch, {}});
         }
-        fail("Unable to move the keyboard cursor.");
+    }
+    size_t max_length = keyboard == Keyboard::Latin ? 12 : 6;
+    if (name.empty() || name.size() > max_length){
+        throw UserSetupError(env.logger(), "Character Name: write 1 to " + std::to_string(max_length) + " characters.");
+    }
+
+    env.log("Entering the character name: " + std::string(CHARACTER_NAME));
+    env.console.overlay().add_log("Name");
+
+    //  Where is the cursor? Returns the key under it, or nullptr with
+    //  bar_index set when it is on the candidate bar.
+    auto read_cursor = [&](const KeyboardKey*& key, int& bar_index) -> bool{
+        for (int c = 0; c < 5; c++){
+            context.wait_for_all_requests();
+            double x = 0;
+            double y = 0;
+            if (find_keyboard_cursor(env.console.video().snapshot(), x, y)){
+                if (y < CAND_BAR_LIMIT_Y){
+                    key = nullptr;
+                    bar_index = (int)std::lround((x - CAND_X0) / CAND_PITCH);
+                }else{
+                    key = nearest_key(layout, x, y);
+                    bar_index = -1;
+                }
+                return true;
+            }
+            context.wait_for(150ms);
+        }
+        return false;
     };
 
-    //  Read the candidate list. Returns the index of the character or -1.
+    auto move_to = [&](const KeyboardKey& target){
+        const KeyboardKey* last = nullptr;
+        int same = 0;
+        for (int step = 0; step < 50; step++){
+            const KeyboardKey* key = nullptr;
+            int bar_index = -1;
+            if (!read_cursor(key, bar_index)){
+                fail("Unable to find the keyboard cursor.");
+            }
+            if (key == nullptr){
+                pbf_press_dpad(context, DPAD_DOWN, 80ms, 220ms);
+                continue;
+            }
+            if (key->label == target.label){
+                return;
+            }
+            same = (key == last) ? same + 1 : 0;
+            last = key;
+            double dx = target.x - key->x;
+            double dy = target.y - key->y;
+            //  Vertical first; if that did not move the cursor, go sideways.
+            bool vertical = std::abs(dy) > 0.035 && (same % 2 == 0 || std::abs(dx) < 0.02);
+            if (vertical){
+                pbf_press_dpad(context, dy > 0 ? DPAD_DOWN : DPAD_UP, 80ms, 220ms);
+            }else{
+                pbf_press_dpad(context, dx > 0 ? DPAD_RIGHT : DPAD_LEFT, 80ms, 220ms);
+            }
+        }
+        fail("Unable to move the cursor to \"" + target.label + "\".");
+    };
+    auto press_key = [&](const std::string& label){
+        const KeyboardKey* key = find_key(layout, label);
+        if (key == nullptr){
+            fail("No key \"" + label + "\" on this keyboard.");
+        }
+        move_to(*key);
+        pbf_press_button(context, BUTTON_A, 80ms, 320ms);
+    };
+
+    //  Candidate list (Chinese keyboards).
     int saved_images = 0;
     auto find_candidate = [&](const std::string& character) -> int{
         context.wait_for_all_requests();
@@ -2270,7 +2626,7 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
         int found = -1;
         for (int i = 0; i < CAND_COUNT; i++){
             ImageFloatBox box(CAND_X0 + CAND_PITCH * i - CAND_PITCH / 2, CAND_Y - 0.028, CAND_PITCH, 0.056);
-            std::string text = trim_spaces(OCR::ocr_read(Language::ChineseTraditional, extract_box_reference(snapshot, box)));
+            std::string text = trim_spaces(OCR::ocr_read(candidate_language, extract_box_reference(snapshot, box)));
             all += text.empty() ? std::string("_") : text;
             all += " ";
             if (found < 0 && text.find(character) != std::string::npos){
@@ -2286,71 +2642,171 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
         }
         return found;
     };
-
     auto pick_candidate = [&](int index){
         for (int step = 0; step < 40; step++){
-            int row = 0;
-            int col = 0;
-            if (!read_cursor(row, col)){
+            const KeyboardKey* key = nullptr;
+            int bar_index = -1;
+            if (!read_cursor(key, bar_index)){
                 fail("Unable to find the cursor near the candidate list.");
             }
-            if (row >= 0){
+            if (key != nullptr){
                 pbf_press_dpad(context, DPAD_UP, 80ms, 220ms);
                 continue;
             }
-            if (col == index){
+            if (bar_index == index){
                 pbf_press_button(context, BUTTON_A, 80ms, 420ms);
                 return;
             }
-            if (col < index){
-                pbf_press_dpad(context, DPAD_RIGHT, 80ms, 220ms);
-            }else{
-                pbf_press_dpad(context, DPAD_LEFT, 80ms, 220ms);
-            }
+            pbf_press_dpad(context, bar_index < index ? DPAD_RIGHT : DPAD_LEFT, 80ms, 220ms);
         }
         fail("Unable to move to the candidate.");
     };
+    auto back_to_keys = [&](){
+        const KeyboardKey* key = nullptr;
+        int bar_index = -1;
+        if (read_cursor(key, bar_index) && key == nullptr){
+            pbf_press_dpad(context, DPAD_DOWN, 80ms, 220ms);
+        }
+    };
 
-    for (const NameChar& item : name){
-        env.log("Name character: " + item.character);
-        bool done = false;
-        for (const std::string& symbol : item.reading){
+    //  Type a Chinese character with one reading. Returns true when it was
+    //  picked from the candidates.
+    auto type_chinese = [&](const std::string& character, const std::vector<std::string>& symbols) -> bool{
+        size_t typed = 0;
+        for (const std::string& symbol : symbols){
             if (symbol == "ˉ"){
-                //  First tone: space (Y).
                 pbf_press_button(context, BUTTON_Y, 80ms, 320ms);
             }else{
-                int row = 0;
-                int col = 0;
-                find_zhuyin_key(symbol, row, col);
-                move_to_key(row, col);
-                pbf_press_button(context, BUTTON_A, 80ms, 320ms);
+                press_key(symbol);
             }
-            int index = find_candidate(item.character);
+            typed++;
+            int index = find_candidate(character);
             if (index >= 0){
-                env.log("Found " + item.character + " at candidate #" + std::to_string(index) + ".", COLOR_BLUE);
+                env.log("Found " + character + " at candidate #" + std::to_string(index) + ".", COLOR_BLUE);
                 pick_candidate(index);
-                done = true;
-                break;
+                back_to_keys();
+                return true;
             }
         }
         //  Whole reading typed: look at the next pages (R).
-        for (int page = 0; !done && page < 4; page++){
+        for (int page = 0; page < 4; page++){
             pbf_press_button(context, BUTTON_R, 80ms, 320ms);
-            int index = find_candidate(item.character);
+            int index = find_candidate(character);
             if (index >= 0){
-                env.log("Found " + item.character + " on page " + std::to_string(page + 2) + ".", COLOR_BLUE);
+                env.log("Found " + character + " on page " + std::to_string(page + 2) + ".", COLOR_BLUE);
                 pick_candidate(index);
-                done = true;
+                back_to_keys();
+                return true;
             }
         }
-        if (!done){
-            fail("Unable to find \"" + item.character + "\" in the candidates. Check its 注音.");
+        //  Not this reading: delete what was typed.
+        back_to_keys();
+        for (size_t c = 0; c < typed + 1; c++){
+            pbf_press_button(context, BUTTON_B, 80ms, 220ms);
         }
-        //  Back down to the keys for the next character.
-        int row = 0;
-        int col = 0;
-        if (read_cursor(row, col) && row < 0){
-            pbf_press_dpad(context, DPAD_DOWN, 80ms, 220ms);
+        return false;
+    };
+
+    bool japanese_hiragana = false;
+    bool japanese_mode_set = false;
+
+    for (const NameChar& item : name){
+        env.log("Name character: " + item.character);
+        uint32_t cp = utf8_code_point(item.character);
+
+        switch (keyboard){
+        case Keyboard::Zhuyin:
+        case Keyboard::Pinyin:{
+            std::vector<std::vector<std::string>> readings;
+            if (!item.manual_reading.empty()){
+                readings.push_back(item.manual_reading);
+            }else{
+                const auto& table = chinese_readings();
+                auto iter = table.find(item.character);
+                if (iter == table.end()){
+                    throw UserSetupError(env.logger(), "Character Name: no reading known for \"" + item.character + "\". Write it as 字:注音.");
+                }
+                const std::vector<std::string>& list = keyboard == Keyboard::Zhuyin ? iter->second.zhuyin : iter->second.pinyin;
+                for (const std::string& reading : list){
+                    readings.push_back(utf8_chars(reading));
+                }
+            }
+            bool done = false;
+            for (const std::vector<std::string>& symbols : readings){
+                if (type_chinese(item.character, symbols)){
+                    done = true;
+                    break;
+                }
+            }
+            if (!done){
+                fail("Unable to find \"" + item.character + "\" in the candidates.");
+            }
+            break;
+        }
+        case Keyboard::Korean:{
+            std::vector<std::string> keys;
+            if (!hangul_keys(cp, keys)){
+                if (find_key(layout, item.character) == nullptr){
+                    throw UserSetupError(env.logger(), "Character Name: \"" + item.character + "\" cannot be typed on the Korean keyboard.");
+                }
+                keys.push_back(item.character);
+            }
+            for (const std::string& key : keys){
+                if (key.size() > 1 && key[0] == '+'){
+                    //  Shift (left stick press), then the key.
+                    const KeyboardKey* target = find_key(layout, key.substr(1));
+                    if (target == nullptr){
+                        fail("No key for \"" + key + "\".");
+                    }
+                    move_to(*target);
+                    pbf_press_button(context, BUTTON_LCLICK, 80ms, 220ms);
+                    pbf_press_button(context, BUTTON_A, 80ms, 320ms);
+                }else{
+                    press_key(key);
+                }
+            }
+            break;
+        }
+        case Keyboard::Japanese:{
+            std::string key;
+            bool hiragana = false;
+            int modifier = 0;
+            if (!kana_keys(cp, key, hiragana, modifier)){
+                throw UserSetupError(env.logger(), "Character Name: \"" + item.character + "\" is not hiragana / katakana.");
+            }
+            if (key != "ー" && (!japanese_mode_set || hiragana != japanese_hiragana)){
+                press_key(hiragana ? "MODE_HIRAGANA" : "MODE_KATAKANA");
+                japanese_hiragana = hiragana;
+                japanese_mode_set = true;
+            }
+            press_key(key);
+            for (int c = 0; c < modifier; c++){
+                press_key("MODE_SMALL");
+            }
+            break;
+        }
+        case Keyboard::Latin:{
+            if (item.character == " "){
+                pbf_press_button(context, BUTTON_Y, 80ms, 320ms);
+                break;
+            }
+            std::string lower = item.character;
+            bool upper = false;
+            if (lower.size() == 1 && lower[0] >= 'A' && lower[0] <= 'Z'){
+                lower[0] = (char)(lower[0] - 'A' + 'a');
+                upper = true;
+            }
+            const KeyboardKey* target = find_key(layout, lower);
+            if (target == nullptr){
+                throw UserSetupError(env.logger(), "Character Name: \"" + item.character + "\" is not on the keyboard (letters, digits and - / : ' , . ? ! only).");
+            }
+            move_to(*target);
+            if (upper){
+                pbf_press_button(context, BUTTON_LCLICK, 80ms, 220ms);
+            }
+            pbf_press_button(context, BUTTON_A, 80ms, 320ms);
+            break;
+        }
         }
     }
 
