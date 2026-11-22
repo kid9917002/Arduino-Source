@@ -51,10 +51,14 @@ namespace PokemonLZA{
 using namespace Pokemon;
 using namespace Kernels::Waterfill;
 
+bool overworld_hud(const ImageViewRGB32& screen);
+
 
 
 //  Macro files (Turbo Macro JSON) expected in MACRO_FOLDER.
 namespace{
+
+const char* MACRO_FOLDER_DEFAULT    = "F:\\Game\\za_auto_2\\multi-lang";
 
 //  ZA-00 (multi-language): the game start, the language and the name are
 //  done by the program. These two hold the button presses around the name.
@@ -85,7 +89,7 @@ const char* MACRO_HOTEL_MORNING     = "ZA-05-8-Z飯店-隔天早上起床後出�
 const char* MACRO_ROLL_TUTORIAL     = "ZA-05-9-Z飯店-翻滾教學.json";
 const char* MACRO_ROLL_TO_DOOR      = "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json";
 const char* MACRO_LEAVE_HOTEL       = "ZA-05-11-Z飯店-出ZA飯店.json";
-const char* MACRO_WALK_TO_URBAIN    = "ZA-06-1-走向蓋伊對戰.json";
+const char* MACRO_WALK_TO_RIVAL     = "ZA-06-1-走向蓋伊對戰.json";
 const char* MACRO_MAP_TUTORIAL      = "ZA-07-地圖教學.json";
 const char* MACRO_ROCKS_WALK        = "ZA-08-1-往前走觸發岩石劇情.json";
 const char* MACRO_ROCKS_SCENE       = "ZA-08-2-岩石劇情.json";
@@ -121,7 +125,7 @@ AutoStoryMultiLang_Descriptor::AutoStoryMultiLang_Descriptor()
         STRING_POKEMON + " LZA", "Auto Story - Multiple Lang",
         "",
         "Play the opening of the story from a new save: create the character, "
-        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat Urbain, catch Bunnelby, Scatterbug and Weedle, "
+        "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat the rival, catch Bunnelby, Scatterbug and Weedle, "
         "leave Wild Zone 1, go to the lab and open Mable's Research (茉蜜姬調查).",
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
@@ -151,8 +155,19 @@ std::unique_ptr<StatsTracker> AutoStoryMultiLang_Descriptor::make_stats() const{
 
 
 
+AutoStoryMultiLang::~AutoStoryMultiLang(){
+    FULL_GAME.remove_listener(*this);
+}
 AutoStoryMultiLang::AutoStoryMultiLang()
-    : MACRO_FOLDER(
+    : FULL_GAME(
+        "<b>Full Game:</b><br>"
+        "Play the whole story from the beginning (ZA-00, starting from Home) with the macros in "
+        "F:\\Game\\za_auto_2\\multi-lang. Uncheck to pick the macro folder and the chapter to start from.",
+        LockMode::LOCK_WHILE_RUNNING,
+        false
+    )
+    , CHAPTER("Chapter", LockMode::LOCK_WHILE_RUNNING)
+    , MACRO_FOLDER(
         false,
         "<b>Macro Folder:</b><br>"
         "Folder that contains the ZA-00 / ZA-01 / ZA-02 Turbo Macro JSON files.",
@@ -181,9 +196,9 @@ AutoStoryMultiLang::AutoStoryMultiLang()
             {StartPoint::HotelNight,      "hotel-night",      "ZA-05-7 Night scene"},
             {StartPoint::HotelMorning,    "hotel-morning",    "ZA-05-8 Next morning"},
             {StartPoint::RollTutorial,    "roll-tutorial",    "ZA-05-9 Roll tutorial / leave hotel"},
-            {StartPoint::WalkToUrbain,    "walk-to-urbain",   "ZA-06-1 Walk to Urbain (蓋伊)"},
-            {StartPoint::UrbainBattle,    "urbain-battle",    "ZA-06-2 Urbain (蓋伊) battle (pre-battle screen)"},
-            {StartPoint::MapTutorial,     "map-tutorial",     "ZA-07 Map tutorial (after Urbain battle)"},
+            {StartPoint::WalkToRival,     "walk-to-urbain",   "ZA-06-1 Walk to the rival (Urbain / Taunie)"},
+            {StartPoint::RivalBattle,     "urbain-battle",    "ZA-06-2 Rival (Urbain / Taunie) battle (pre-battle screen)"},
+            {StartPoint::MapTutorial,     "map-tutorial",     "ZA-07 Map tutorial (after the rival battle)"},
             {StartPoint::RockScene,       "rock-scene",       "ZA-08 Rocks scene"},
             {StartPoint::Rooftop,         "rooftop",          "ZA-09 Ladder / rooftop / jump down"},
             {StartPoint::PokemonCenterPC, "pc",               "ZA-10 PC / Pokedex tutorial"},
@@ -240,6 +255,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         "塔霓",
         "塔霓"
     )
+    , CHARACTER_GROUP("Character", LockMode::LOCK_WHILE_RUNNING)
     , CHARACTER(
         "<b>Character Look:</b><br>"
         "Which portrait to pick on the LOOKS screen.",
@@ -274,17 +290,28 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         &NOTIFICATION_ERROR_FATAL,
     })
 {
+    CHAPTER.PA_ADD_OPTION(MACRO_FOLDER);
+    CHAPTER.PA_ADD_OPTION(START_POINT);
+    CHARACTER_GROUP.PA_ADD_OPTION(CHARACTER);
+    CHARACTER_GROUP.PA_ADD_OPTION(CHARACTER_NAME);
+
     PA_ADD_OPTION(START_LOCATION);
     PA_ADD_OPTION(PROFILE);
-    PA_ADD_OPTION(MACRO_FOLDER);
     PA_ADD_OPTION(GAME_LANGUAGE);
-    PA_ADD_OPTION(CHARACTER_NAME);
-    PA_ADD_OPTION(START_POINT);
-    PA_ADD_OPTION(CHARACTER);
+    PA_ADD_OPTION(FULL_GAME);
+    PA_ADD_OPTION(CHAPTER);
+    PA_ADD_OPTION(CHARACTER_GROUP);
     PA_ADD_OPTION(STARTER);
     PA_ADD_OPTION(BATTLE_AI);
     PA_ADD_OPTION(GO_HOME_WHEN_DONE);
     PA_ADD_OPTION(NOTIFICATIONS);
+
+    FULL_GAME.add_listener(*this);
+    AutoStoryMultiLang::on_config_value_changed(this);
+}
+void AutoStoryMultiLang::on_config_value_changed(void*){
+    //  Full Game: the chapter (macro folder + start step) is fixed.
+    CHAPTER.set_visibility(FULL_GAME ? ConfigOptionState::DISABLED : ConfigOptionState::ENABLED);
 }
 
 
@@ -311,7 +338,7 @@ void AutoStoryMultiLang::run_macro(
 
     context.wait_for_all_requests();
 
-    std::string folder = MACRO_FOLDER;
+    std::string folder = FULL_GAME ? std::string(MACRO_FOLDER_DEFAULT) : std::string(MACRO_FOLDER);
     std::string path = folder;
     if (!path.empty() && path.back() != '/' && path.back() != '\\'){
         path += "/";
@@ -403,7 +430,7 @@ void AutoStoryMultiLang::run_macro(
             piece = JsonArray();
             context.wait_for_all_requests();
             int64_t hold_ms = entry_ms(*entry_object, 0);
-            if (read_party_slot_count(env.console.video().snapshot()) >= 1){
+            if (m_hud_expected && overworld_hud(env.console.video().snapshot())){
                 env.log("Recorded + (skip video): on the overworld, so not pressing it.", COLOR_BLUE);
                 context.wait_for(Milliseconds(std::min<int64_t>(hold_ms, 1000)));
             }else{
@@ -1164,6 +1191,43 @@ namespace{
 //  Story dialog boxes whose shape varies (e.g. the jagged white "shout"
 //  bubble) all have a dark "next" chevron (a hollow V) at the bottom right
 //  of the white box.
+bool white_box_chevron(const ImageViewRGB32& screen);
+
+}
+
+//  Overworld HUD: the party bar at the bottom left. With a party of one
+//  there are no small slots, so also look for the bar's light-blue left
+//  arrow and lead-slot panel.
+bool overworld_hud(const ImageViewRGB32& screen){
+    if (read_party_slot_count(screen) >= 1){
+        return true;
+    }
+    auto fraction = [&](const ImageFloatBox& box, bool arrow){
+        ImageViewRGB32 image = extract_box_reference(screen, box);
+        size_t hits = 0;
+        size_t total = 0;
+        for (size_t y = 0; y < image.height(); y++){
+            for (size_t x = 0; x < image.width(); x++){
+                uint32_t pixel = image.pixel(x, y);
+                int r = (pixel >> 16) & 0xff;
+                int g = (pixel >>  8) & 0xff;
+                int b = (pixel >>  0) & 0xff;
+                total++;
+                bool hit = arrow
+                    ? (b >= 190 && g >= 150 && b >= r + 40)
+                    : (b >= 190 && g >= 160 && r >= 80 && r <= 210 && b >= r + 25);
+                hits += hit ? 1 : 0;
+            }
+        }
+        return total == 0 ? 0.0 : (double)hits / (double)total;
+    };
+    double arrow = fraction(ImageFloatBox(0.018, 0.895, 0.016, 0.035), true);
+    double lead = fraction(ImageFloatBox(0.040, 0.875, 0.038, 0.090), false);
+    return arrow >= 0.15 && lead >= 0.08;
+}
+
+namespace{
+
 bool white_box_chevron(const ImageViewRGB32& screen){
     ImageFloatBox search(0.70, 0.86, 0.10, 0.10);
     ImageViewRGB32 area = extract_box_reference(screen, search);
@@ -1368,7 +1432,9 @@ void AutoStoryMultiLang::clear_dialogs(
     env.log("Clearing dialogs: " + name);
     env.console.overlay().add_log("Dialog: " + name);
 
-    const Milliseconds QUIET_NEEDED = quiet;
+    //  Before the starter there is no party bar, so "quiet" only means no
+    //  dialog box: wait a bit longer.
+    const Milliseconds QUIET_NEEDED = m_hud_expected ? quiet : std::max<Milliseconds>(quiet, 6000ms);
 
     WallClock start = current_time();
     WallClock last_activity = start;
@@ -1407,7 +1473,16 @@ void AutoStoryMultiLang::clear_dialogs(
             continue;
         }
 
-        bool hud = read_party_slot_count(snapshot) >= 1;
+        CutsceneLetterboxDetector letterbox_check;
+        bool hud = false;
+        if (overworld_hud(snapshot)){
+            hud = true;
+            m_hud_expected = true;
+        }else if (!m_hud_expected){
+            //  No party bar yet (before the starter): no dialog, not black
+            //  and no cutscene bars counts as the overworld.
+            hud = !is_black(snapshot, 80, 40) && !letterbox_check.detect(snapshot);
+        }
         if (!hud){
             activity_seen = true;
         }
@@ -1485,7 +1560,7 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
         State state;
         state.dialog = dialog_on_screen(snapshot);
         state.prompt = a_prompt_on_screen(snapshot);
-        state.hud = read_party_slot_count(snapshot) >= 1;
+        state.hud = overworld_hud(snapshot);
         if (outdoors){
             state.minimap = find_minimap_quest_marker(snapshot, state.mdx, state.mdy)
                 && read_camera_heading(snapshot, state.heading);
@@ -1917,7 +1992,7 @@ void AutoStoryMultiLang::open_research_list(SingleSwitchProgramEnvironment& env,
         context.wait_for_all_requests();
         VideoSnapshot snapshot = env.console.video().snapshot();
         CutsceneLetterboxDetector letterbox;
-        if (read_party_slot_count(snapshot) >= 1 ||
+        if (overworld_hud(snapshot) ||
             letterbox.detect(snapshot) ||
             dialog_on_screen(snapshot) ||
             is_black(snapshot, 80, 40)
@@ -2900,7 +2975,10 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
 void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
-    const StartPoint start = START_POINT.get();
+    const StartPoint start = FULL_GAME ? StartPoint::CreateCharacter : START_POINT.get();
+
+    //  No party bar on the overworld until the starter is picked.
+    m_hud_expected = start > StartPoint::ChooseStarter;
     const bool from_beginning = start <= StartPoint::CreateCharacter;
 
     //  Connect the controller.
@@ -2943,6 +3021,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     if (start <= StartPoint::ChooseStarter){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");
         run_macro(env, context, starter_macro_filename());
+        m_hud_expected = true;
     }
 
     //  ZA-02: first battle. Ends on the post-battle dialog.
@@ -3011,15 +3090,15 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         run_macro(env, context, MACRO_LEAVE_HOTEL);
     }
 
-    //  ZA-06: Urbain.
-    if (start <= StartPoint::WalkToUrbain){
-        run_macro(env, context, MACRO_WALK_TO_URBAIN);
+    //  ZA-06: the rival (Urbain or Taunie, by the player's look).
+    if (start <= StartPoint::WalkToRival){
+        run_macro(env, context, MACRO_WALK_TO_RIVAL);
     }
 
-    //  ZA-06: Urbain battle. Ends on the post-battle dialog.
-    if (start <= StartPoint::UrbainBattle){
-        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Urbain battle.");
-        run_trainer_battle(env, context, "Urbain Battle");
+    //  ZA-06: rival battle. Ends on the post-battle dialog.
+    if (start <= StartPoint::RivalBattle){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Rival battle.");
+        run_trainer_battle(env, context, "Rival Battle");
     }
 
     //  ZA-07 .. ZA-11.

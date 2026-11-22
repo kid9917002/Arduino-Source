@@ -9,7 +9,7 @@
  *    ZA-03  battle zone, escape, waitress battle (vision), escape
  *    ZA-04  walk into Hotel Z
  *    ZA-05  Hotel Z story, night, morning, roll tutorial, leave hotel
- *    ZA-06  walk to Urbain, Urbain battle (vision)
+ *    ZA-06  walk to the rival (Urbain / Taunie), rival battle (vision)
  *    ZA-07 .. ZA-11  map tutorial, rocks, rooftop, PC, Pokedex, Wild Zone 1
  *    ZA-12  first catch, Bunnelby battle + catch (vision), catch Scatterbug
  *           and Weedle without battling (vision), leave Wild Zone 1 (vision)
@@ -30,6 +30,8 @@
 
 #include "Common/Cpp/Time.h"
 #include "Common/Cpp/Options/StringOption.h"
+#include "Common/Cpp/Options/GroupOption.h"
+#include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "Common/Cpp/Options/SimpleIntegerOption.h"
 #include "NintendoSwitch/Options/NintendoSwitch_StartInGripMenuOption.h"
 #include "CommonFramework/Language.h"
@@ -53,10 +55,13 @@ public:
 };
 
 
-class AutoStoryMultiLang : public SingleSwitchProgramInstance{
+class AutoStoryMultiLang : public SingleSwitchProgramInstance, public ConfigOption::Listener{
 public:
     using Descriptor = AutoStoryMultiLang_Descriptor;
+    ~AutoStoryMultiLang();
     AutoStoryMultiLang();
+
+    virtual void on_config_value_changed(void* object) override;
 
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
 
@@ -88,9 +93,9 @@ public:
         HotelNight,         //  ZA-05-7
         HotelMorning,       //  ZA-05-8
         RollTutorial,       //  ZA-05-9 .. ZA-05-11
-        WalkToUrbain,       //  ZA-06-1
-        UrbainBattle,       //  on the pre-battle screen (ZA-06-2-蓋伊戰鬥前)
-        MapTutorial,        //  ZA-07, on the dialog after the Urbain battle
+        WalkToRival,        //  ZA-06-1
+        RivalBattle,        //  on the pre-battle screen (ZA-06-2-蓋伊戰鬥前)
+        MapTutorial,        //  ZA-07, on the dialog after the rival battle
         RockScene,          //  ZA-08
         Rooftop,            //  ZA-09
         PokemonCenterPC,    //  ZA-10
@@ -179,6 +184,11 @@ private:
 
     std::string starter_macro_filename() const;
 
+    //  Before the starter is picked there is no party bar on the overworld.
+    //  Until then, dialog clearing cannot use it to tell the overworld from
+    //  a scene.
+    bool m_hud_expected = true;
+
     //  OCR language for the chosen game language (both Spanish -> Spanish).
     Language ocr_language() const;
 
@@ -226,12 +236,15 @@ private:
 
 
 private:
+    BooleanCheckBoxOption FULL_GAME;
+    GroupOption CHAPTER;
     StringOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
     StartInGripOrGameOption START_LOCATION;
     SimpleIntegerOption<uint8_t> PROFILE;
     EnumDropdownOption<GameLanguage> GAME_LANGUAGE;
     StringOption CHARACTER_NAME;
+    GroupOption CHARACTER_GROUP;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
     BattleAIOption BATTLE_AI;
