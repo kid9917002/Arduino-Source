@@ -1234,6 +1234,24 @@ bool overworld_hud(const ImageViewRGB32& screen){
 
 namespace{
 
+//  The yellow hexagon "!" of a new quest at the top left (any language).
+bool quest_icon(const ImageViewRGB32& screen){
+    ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.036, 0.066, 0.014, 0.027));
+    size_t hits = 0;
+    size_t total = 0;
+    for (size_t y = 0; y < image.height(); y++){
+        for (size_t x = 0; x < image.width(); x++){
+            uint32_t pixel = image.pixel(x, y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            total++;
+            hits += (r >= 200 && g >= 150 && g <= 225 && b <= 140 && r - b >= 90) ? 1 : 0;
+        }
+    }
+    return total != 0 && (double)hits / (double)total >= 0.30;
+}
+
 bool white_box_chevron(const ImageViewRGB32& screen){
     ImageFloatBox search(0.70, 0.86, 0.10, 0.10);
     ImageViewRGB32 area = extract_box_reference(screen, search);
@@ -1557,6 +1575,11 @@ void AutoStoryMultiLang::clear_dialogs(
     bool logo_seen = false;
     const Milliseconds QUIET_AFTER_LOGO = 3000ms;
 
+    //  Waiting for the new quest: once the dialogs are over and the yellow
+    //  "!" shows up, the story part is done. (Otherwise the quiet time rule
+    //  still ends it.)
+    const bool quest_shortcut = m_quest_icon_expected && require_dialog;
+
     WallClock start = current_time();
     WallClock last_activity = start;
     size_t presses = 0;
@@ -1674,6 +1697,13 @@ void AutoStoryMultiLang::clear_dialogs(
         }else if (!hud || letterbox.detect(snapshot)){
             //  Fade, loading or a cutscene: not done yet.
             last_activity = current_time();
+        }else if (quest_shortcut && presses > 0 && now - last_dialog >= 800ms && quest_icon(snapshot)){
+            env.log(
+                "New quest shown: dialogs cleared (" + std::to_string(presses) + " A presses): " + name,
+                COLOR_BLUE
+            );
+            m_quest_icon_expected = false;
+            return;
         }else if (logo_needed && !logo_seen && now - start < std::chrono::seconds(150)){
             //  The logo video has not played yet: the story is not over.
             //  (Give up after 150 s and fall back to the quiet time.)
@@ -3241,7 +3271,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         //  Start walking as soon as the station dialogs are over (the macro
         //  used to wait a fixed 8 seconds for them).
         clear_dialogs(env, context, "Before chasing Pancham", false, 1500ms, false, std::chrono::seconds(20));
+        m_quest_icon_expected = true;
         run_macro(env, context, MACRO_CHASE_PANCHAM);
+        m_quest_icon_expected = false;
     }
     if (start <= StartPoint::ChooseStarter){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");

@@ -192,6 +192,9 @@ private:
     //  Set while a macro whose dialogs end with the Z-A logo video runs:
     //  its dialogs are not over until that video was seen.
     bool m_logo_video_expected = false;
+    //  Set only while the Pancham chase macro (ZA-02-0) runs: its dialogs are
+    //  over as soon as the new quest (yellow "!" at the top left) shows up.
+    bool m_quest_icon_expected = false;
 
     //  OCR language for the chosen game language (both Spanish -> Spanish).
     Language ocr_language() const;
