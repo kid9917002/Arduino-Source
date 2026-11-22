@@ -10,12 +10,16 @@
 #include "CommonFramework/ImageTools/ImageStats.h"
 #include "CommonFramework/ImageTypes/ImageViewRGB32.h"
 #include "CommonFramework/VideoPipeline/VideoOverlayScopes.h"
+#include "Kernels/Waterfill/Kernels_Waterfill.h"
+#include "CommonTools/Images/BinaryImage_FilterRgb32.h"
 #include "CommonTools/Images/SolidColorTest.h"
 #include "PokemonLZA_StoryScreenDetectors.h"
 
 namespace PokemonAutomation{
 namespace NintendoSwitch{
 namespace PokemonLZA{
+
+using namespace Kernels::Waterfill;
 
 
 namespace{
@@ -209,85 +213,62 @@ bool read_camera_heading(const ImageViewRGB32& screen, double& degrees){
 
 
 
-bool find_weedle(const ImageViewRGB32& screen, double& x, double& y){
+bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar){
     size_t width = screen.width();
     size_t height = screen.height();
     if (width < 100 || height < 100){
         return false;
     }
 
-    //  Count orange (body) and pink (nose) pixels per grid cell.
-    size_t cell = std::max<size_t>(1, width / 50);
-    size_t grid_w = width / cell;
-    size_t grid_h = height / cell;
-    std::vector<uint32_t> orange(grid_w * grid_h, 0);
-    std::vector<uint32_t> pink(grid_w * grid_h, 0);
+    //  Skip the bottom of the screen: the party HUD has green HP bars too.
+    const ImageFloatBox SEARCH_AREA(0.0, 0.0, 1.0, 0.80);
+    ImageViewRGB32 area = extract_box_reference(screen, SEARCH_AREA);
 
-    for (size_t py = 0; py < grid_h * cell; py++){
-        double fy = (double)py / (double)height;
-        if (fy < 0.30 || fy > 0.80){
-            continue;   //  sky / top HUD, bottom HUD
-        }
-        for (size_t px = 0; px < grid_w * cell; px++){
-            double fx = (double)px / (double)width;
-            if (fx < 0.10){
-                continue;   //  quest markers on the left edge
-            }
-            if (fx < 0.32 && fy > 0.70){
-                continue;   //  party HUD
-            }
-            if (fx > 0.42 && fx < 0.58 && fy > 0.33){
-                continue;   //  the player (skin and red pouch look similar)
-            }
+    //  The bar is a flat green, measured at about (57, 219, 112).
+    PackedBinaryMatrix matrix = compress_rgb32_to_binary_range(
+        area,
+        27, 87,
+        194, 244,
+        82, 142
+    );
+    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 50);
 
-            uint32_t pixel = screen.pixel(px, py);
-            int r = (pixel >> 16) & 0xff;
-            int g = (pixel >>  8) & 0xff;
-            int b = (pixel >>  0) & 0xff;
-            int mx = std::max(r, std::max(g, b));
-            int mn = std::min(r, std::min(g, b));
-            double sat = mx == 0 ? 0 : (double)(mx - mn) / (double)mx;
-
-            size_t index = (py / cell) * grid_w + (px / cell);
-            if (r >= 170 && r > g + 35 && g > b + 15 && sat >= 0.35 && sat <= 0.75){
-                orange[index]++;
-            }else if (r >= 180 && g <= 120 && b >= 80 && b <= 170 && r > b + 50){
-                pink[index]++;
-            }
-        }
-    }
-
-    //  A Weedle is a 3x3-cell area with enough orange and some pink. The
-    //  pink must be a minority (the nose), which rules out pink hair and
-    //  clothing.
     bool found = false;
-    uint32_t best_score = 0;
-    for (size_t gy = 1; gy + 1 < grid_h; gy++){
-        for (size_t gx = 1; gx + 1 < grid_w; gx++){
-            uint32_t o = 0;
-            uint32_t p = 0;
-            for (size_t dy = 0; dy < 3; dy++){
-                for (size_t dx = 0; dx < 3; dx++){
-                    size_t index = (gy + dy - 1) * grid_w + (gx + dx - 1);
-                    o += orange[index];
-                    p += pink[index];
-                }
-            }
-            if (o < 12 || p < 3){
-                continue;
-            }
-            if (p * 100 < o * 8 || p * 100 > o * 80){
-                continue;
-            }
-            if (o + p > best_score){
-                best_score = o + p;
-                x = ((double)gx + 0.5) * (double)cell / (double)width;
-                y = ((double)gy + 0.5) * (double)cell / (double)height;
-                found = true;
-            }
+    size_t best_area = 0;
+    for (const WaterfillObject& object : objects){
+        double w = (double)object.width() / (double)width;
+        double h = (double)object.height() / (double)height;
+        if (w < 0.03 || w > 0.12){
+            continue;
+        }
+        if (h < 0.006 || h > 0.025){
+            continue;
+        }
+        if (object.width() < 4 * object.height()){
+            continue;   //  must be a flat bar
+        }
+        if (object.area_ratio() < 0.7){
+            continue;   //  must be solid
+        }
+        if (object.area > best_area){
+            best_area = object.area;
+            bar = ImageFloatBox(
+                (double)object.min_x / (double)width,
+                (double)object.min_y / (double)height,
+                w, h
+            );
+            found = true;
         }
     }
     return found;
+}
+
+ImageFloatBox locked_target_name_box(const ImageFloatBox& bar){
+    //  Measured: the name sits 0.004 to 0.055 above the bar top and is about
+    //  as wide as the bar. The "Lv.4" line above it is left out.
+    double center_x = bar.x + bar.width / 2;
+    double width = bar.width * 1.6;
+    return ImageFloatBox(center_x - width / 2, bar.y - 0.057, width, 0.053);
 }
 
 

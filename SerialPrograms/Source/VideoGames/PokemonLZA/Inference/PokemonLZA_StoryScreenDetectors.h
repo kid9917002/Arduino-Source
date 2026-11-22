@@ -60,10 +60,13 @@ void make_party_slot_overlays(VideoOverlaySet& items, Color color = COLOR_GREEN)
 //  on screen.
 bool read_camera_heading(const ImageViewRGB32& screen, double& degrees);
 
-//  Find a Weedle (orange body with a pink nose) in the game view. Returns
-//  false if none is found. x/y are normalized screen coordinates. The area
-//  around the player and the HUD are skipped. Only meant for the Wild Zone.
-bool find_weedle(const ImageViewRGB32& screen, double& x, double& y);
+//  While ZL is held on a wild Pokemon, a label with its level, name and a
+//  green HP bar floats above it. Find that HP bar. Returns false if there is
+//  no locked target. The name is just above the bar.
+bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar);
+
+//  Where the name text is, given the HP bar from find_locked_target_hp_bar().
+ImageFloatBox locked_target_name_box(const ImageFloatBox& bar);
 
 
 class CutsceneLetterboxDetector : public StaticScreenDetector{

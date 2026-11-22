@@ -21,6 +21,8 @@
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_Superscalar.h"
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
 #include "Pokemon/Pokemon_Strings.h"
+#include "Pokemon/Inference/Pokemon_NameReader.h"
+#include "CommonTools/OCR/OCR_Routines.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_ButtonDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h"
@@ -172,6 +174,12 @@ AutoStory::AutoStory()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
+    , LANGUAGE(
+        "<b>Game Language:</b><br>"
+        "Used to read the names of wild Pokemon when catching Scatterbug and Weedle.",
+        Pokemon::PokemonNameReader::instance().languages(),
+        LockMode::LOCK_WHILE_RUNNING
+    )
     , CAMERA_MODE(
         "<b>Camera Mode:</b><br>"
         "Catching turns the camera toward the target, so normal runs face the camera north "
@@ -217,7 +225,10 @@ AutoStory::AutoStory()
         &NOTIFICATION_ERROR_FATAL,
     })
 {
+    LANGUAGE.set(Language::ChineseTraditional);
+
     PA_ADD_OPTION(MACRO_FOLDER);
+    PA_ADD_OPTION(LANGUAGE);
     PA_ADD_OPTION(START_POINT);
     PA_ADD_OPTION(CAMERA_MODE);
     PA_ADD_OPTION(CHARACTER);
@@ -590,65 +601,6 @@ void AutoStory::face_camera_north(SingleSwitchProgramEnvironment& env, ProContro
 
 
 
-bool AutoStory::aim_at_weedle(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    env.log("Looking for Weedle.");
-
-    double x = 0;
-    double y = 0;
-
-    //  Find it. If it is not in view, turn the camera right step by step
-    //  (a full circle at most).
-    bool found = false;
-    for (int step = 0; step < 14; step++){
-        context.wait_for_all_requests();
-        if (find_weedle(env.console.video().snapshot(), x, y)){
-            found = true;
-            break;
-        }
-        pbf_move_right_joystick(context, {1, 0}, 250ms, 500ms);
-    }
-    if (!found){
-        return false;
-    }
-
-    //  Center it. Screen x moves left when the camera turns right. Start
-    //  with a guess for how far it moves per ms of stick and re-measure.
-    double rate = -0.0015;   //  change in normalized x per ms of stick right
-    for (int iteration = 0; iteration < 10; iteration++){
-        double error = x - 0.5;
-        env.log("Weedle at x = " + std::to_string(x) + ", y = " + std::to_string(y));
-        if (std::abs(error) <= 0.04){
-            env.log("Weedle centered.", COLOR_BLUE);
-            env.console.overlay().add_log("Weedle Centered");
-            return true;
-        }
-
-        //  Stick right (+) changes x by `rate` per ms.
-        double push_ms = std::abs(error / rate);
-        push_ms = std::max(30.0, std::min(push_ms, 400.0));
-        double direction = (-error / rate) > 0 ? 1.0 : -1.0;
-        pbf_move_right_joystick(context, {direction, 0}, Milliseconds((int64_t)push_ms), 400ms);
-        context.wait_for_all_requests();
-
-        double new_x = 0;
-        double new_y = 0;
-        if (!find_weedle(env.console.video().snapshot(), new_x, new_y)){
-            env.log("Lost Weedle while turning.", COLOR_RED);
-            return false;
-        }
-        double change = new_x - x;
-        if (std::abs(change) >= 0.01){
-            rate = change / (direction * push_ms);
-        }
-        x = new_x;
-        y = new_y;
-    }
-    env.log("Weedle close to the center.", COLOR_BLUE);
-    return true;
-}
-
-
-
 void AutoStory::throw_ball(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     env.log("Throwing a ball.", COLOR_BLUE);
     env.console.overlay().add_log("Throw Ball");
@@ -662,53 +614,96 @@ void AutoStory::throw_ball(SingleSwitchProgramEnvironment& env, ProControllerCon
 
 void AutoStory::catch_wild_pokemon(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
-    const std::string& name,
-    bool aim_at_weedle_first
+    const std::string& slug, const std::string& display_name
 ){
-    env.log("Catching " + name + ".");
-    env.console.overlay().add_log("Catch: " + name);
+    env.log("Catching " + display_name + ".");
+    env.console.overlay().add_log("Catch: " + display_name);
 
     VideoOverlaySet overlays(env.console.overlay());
     make_party_slot_overlays(overlays);
 
-    //  Read how many Pokemon are in the party now. Take the highest of a few
-    //  reads in case something briefly covers the HUD.
+    //  Party size now. Take the highest of a few reads in case something
+    //  briefly covers the HUD.
     context.wait_for_all_requests();
     int before = 0;
     for (int c = 0; c < 3; c++){
         before = std::max(before, read_party_slot_count(env.console.video().snapshot()));
         context.wait_for(200ms);
     }
-    env.log("Party slots before catching " + name + ": " + std::to_string(before));
+    env.log("Party slots before catching " + display_name + ": " + std::to_string(before));
 
-    for (int attempt = 1; attempt <= 6; attempt++){
-        env.log(name + ": throw attempt " + std::to_string(attempt));
-        if (aim_at_weedle_first && !aim_at_weedle(env, context)){
-            env.log("Weedle not found on screen. Throwing straight ahead.", COLOR_RED);
+    const int MAX_LOCK_TRIES = 30;  //  about 1.5 turns of the camera
+    const int MAX_THROWS = 6;
+    int throws = 0;
+
+    for (int attempt = 1; attempt <= MAX_LOCK_TRIES; attempt++){
+        context.wait_for_all_requests();
+
+        //  Hold ZL. The press is queued and the next command may start right
+        //  away, so ZR can be pressed while ZL is still held.
+        ssf_press_button(context, BUTTON_ZL, 0ms, 2200ms, 0ms);
+        context.wait_for(900ms);    //  let the label appear
+
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        ImageFloatBox bar;
+        bool locked = find_locked_target_hp_bar(snapshot, bar);
+
+        bool is_target = false;
+        if (locked){
+            ImageFloatBox name_box = locked_target_name_box(bar);
+            OverlayBoxScope name_overlay(env.console.overlay(), name_box, COLOR_BLUE);
+            OCR::StringMatchResult result = Pokemon::PokemonNameReader::instance().read_substring(
+                env.console.logger(), LANGUAGE,
+                extract_box_reference(snapshot, name_box),
+                OCR::WHITE_TEXT_FILTERS()
+            );
+            std::string names;
+            for (const auto& item : result.results){
+                names += item.second.token + " ";
+                if (item.second.token == slug){
+                    is_target = true;
+                }
+            }
+            env.log("Locked onto: " + (names.empty() ? std::string("(unreadable)") : names));
+        }else{
+            env.log("Nothing to lock onto.");
         }
-        throw_ball(env, context);
 
-        //  The ball flies, shakes, then the Pokemon shows up in the party
-        //  bar (with the "登錄完畢" badge for a new Pokedex entry).
+        if (!is_target){
+            //  Let go of ZL, turn the camera a little and try the next one.
+            context.wait_for_all_requests();
+            pbf_move_right_joystick(context, {1, 0}, 120ms, 400ms);
+            continue;
+        }
+
+        //  It is the one. Throw while still holding ZL.
+        throws++;
+        env.log(display_name + " locked. Throwing (" + std::to_string(throws) + ").", COLOR_BLUE);
+        env.console.overlay().add_log("Throw at " + display_name);
+        pbf_press_button(context, BUTTON_ZR, 120ms, 0ms);
+        context.wait_for_all_requests();
+
+        //  The ball flies and shakes, then the Pokemon shows up in the party
+        //  bar.
         WallClock start = current_time();
         int confirmations = 0;
         while (current_time() - start < std::chrono::seconds(12)){
             context.wait_for_all_requests();
-            VideoSnapshot snapshot = env.console.video().snapshot();
+            VideoSnapshot frame = env.console.video().snapshot();
 
             TutorialWindowDetector tutorial;
-            if (tutorial.detect(snapshot)){
+            if (tutorial.detect(frame)){
                 env.log("Tutorial window. Pressing A.");
                 pbf_press_button(context, BUTTON_A, 160ms, 840ms);
                 continue;
             }
 
-            int now = read_party_slot_count(snapshot);
+            int now = read_party_slot_count(frame);
             if (now > before){
                 confirmations++;
                 if (confirmations >= 2){
-                    env.log(name + " caught. Party slots: " + std::to_string(now), COLOR_BLUE);
-                    env.console.overlay().add_log(name + " Caught");
+                    env.log(display_name + " caught. Party slots: " + std::to_string(now), COLOR_BLUE);
+                    env.console.overlay().add_log(display_name + " Caught");
                     context.wait_for(1000ms);
                     return;
                 }
@@ -717,13 +712,17 @@ void AutoStory::catch_wild_pokemon(
             }
             context.wait_for(400ms);
         }
-        env.log(name + ": not caught yet.", COLOR_RED);
+        env.log(display_name + ": not caught yet.", COLOR_RED);
+
+        if (throws >= MAX_THROWS){
+            break;
+        }
     }
 
     OperationFailedExceptionWithScreenshot::fire(
         ErrorReportMode::NO_ERROR_REPORT,
-        "catch_wild_pokemon(): Failed to catch " + name + " after 6 throws. "
-        "Check that the walking macro ends facing it.",
+        "catch_wild_pokemon(): Failed to catch " + display_name + ". "
+        "Check that the walking macro ends with it in view.",
         env.console
     );
 }
@@ -1070,14 +1069,14 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
         //  ZA-12-3 always ends in the same spot with the same camera, so no
         //  camera reset is needed before this walk.
         run_macro(env, context, MACRO_WALK_TO_SCATTERBUG);
-        catch_wild_pokemon(env, context, "Scatterbug", false);
+        catch_wild_pokemon(env, context, "scatterbug", "Scatterbug");
     }
     if (start <= StartPoint::CatchWeedle){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
         //  Catching Scatterbug turned the camera. Reset it first.
         face_camera_north(env, context);
         run_macro(env, context, MACRO_WALK_TO_WEEDLE);
-        catch_wild_pokemon(env, context, "Weedle", true);
+        catch_wild_pokemon(env, context, "weedle", "Weedle");
     }
 
     //  ZA-12: leave Wild Zone 1. Stops once outside.

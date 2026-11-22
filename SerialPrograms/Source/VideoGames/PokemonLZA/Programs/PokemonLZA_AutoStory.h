@@ -25,6 +25,7 @@
 #define PokemonAutomation_PokemonLZA_AutoStory_H
 
 #include "Common/Cpp/Options/StringOption.h"
+#include "CommonTools/Options/LanguageOCROption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
@@ -129,20 +130,15 @@ private:
     //  throw a ball when told to. Stops on the dialog after the catch.
     void run_capture_battle(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
-    //  Throw balls at the Pokemon in front of us (no battle) until the party
-    //  bar shows one more Pokemon.
-    //  If aim_at_weedle is set, turn the camera to center a Weedle on screen
-    //  before each throw.
+    //  Catch a specific wild Pokemon without battling. Hold ZL to lock on,
+    //  read the name above the target (OCR), and throw (ZR, still holding
+    //  ZL) only if it is the one we want. Otherwise turn the camera a little
+    //  and lock onto the next one. The catch is confirmed from the party bar.
+    //  slug: Pokemon slug, e.g. "scatterbug".
     void catch_wild_pokemon(
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
-        const std::string& name,
-        bool aim_at_weedle
+        const std::string& slug, const std::string& display_name
     );
-
-    //  Look for a Weedle on screen (turning the camera if needed) and turn
-    //  the camera until it is in the middle, so ZL locks onto it.
-    //  Returns false if none was found.
-    bool aim_at_weedle(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
     //  Press A on the "A 離開" prompt at the Wild Zone gate.
     void leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
@@ -161,6 +157,7 @@ private:
 private:
     StringOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
+    OCR::LanguageOCROption LANGUAGE;
     EnumDropdownOption<CameraMode> CAMERA_MODE;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;
