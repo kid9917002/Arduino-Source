@@ -1354,6 +1354,48 @@ bool white_dialog_box(const ImageViewRGB32& screen){
     return total > 0 && white * 100 >= total * 55;
 }
 
+//  The company logo video (gold emblem on a dark blue vignette) in the
+//  opening. It can be skipped by holding +.
+bool logo_video(const ImageViewRGB32& screen){
+    auto stats_of = [&](const ImageFloatBox& box){
+        return image_stats(extract_box_reference(screen, box));
+    };
+    //  Dark corners.
+    double corners =
+        stats_of(ImageFloatBox(0.00, 0.00, 0.12, 0.12)).average.sum() +
+        stats_of(ImageFloatBox(0.88, 0.00, 0.12, 0.12)).average.sum() +
+        stats_of(ImageFloatBox(0.00, 0.88, 0.12, 0.12)).average.sum() +
+        stats_of(ImageFloatBox(0.88, 0.88, 0.12, 0.12)).average.sum();
+    if (corners / 4 > 80){
+        return false;
+    }
+    //  Plain dark blue on both sides.
+    for (double x : {0.06, 0.80}){
+        ImageStats side = stats_of(ImageFloatBox(x, 0.40, 0.14, 0.20));
+        if (side.average.sum() > 170 || side.average.b < side.average.r + 10 || side.stddev.sum() > 50){
+            return false;
+        }
+    }
+    //  Gold emblem in the middle.
+    ImageViewRGB32 center = extract_box_reference(screen, ImageFloatBox(0.38, 0.22, 0.24, 0.40));
+    size_t gold = 0;
+    size_t total = 0;
+    for (size_t y = 0; y < center.height(); y += 2){
+        for (size_t x = 0; x < center.width(); x += 2){
+            uint32_t pixel = center.pixel(x, y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            total++;
+            if (r >= 170 && g >= 130 && b <= 140 && r - b >= 70){
+                gold++;
+            }
+        }
+    }
+    double ratio = total == 0 ? 0 : (double)gold / (double)total;
+    return ratio >= 0.03 && ratio <= 0.30;
+}
+
 //  A full-screen menu (ZA Royale, MAP, POKEDEX, main menu ...) shows a
 //  white "B" button icon at the bottom right to close it.
 bool b_close_screen(const ImageViewRGB32& screen){
@@ -1515,6 +1557,15 @@ void AutoStoryMultiLang::clear_dialogs(
 
         context.wait_for_all_requests();
         VideoSnapshot snapshot = env.console.video().snapshot();
+
+        if (logo_video(snapshot)){
+            env.log("Logo video: holding + to skip it.");
+            pbf_press_button(context, BUTTON_PLUS, 3000ms, 500ms);
+            activity_seen = true;
+            last_activity = current_time();
+            last_dialog = last_activity;
+            continue;
+        }
 
         if (dialog_on_screen(snapshot)){
             pbf_press_button(context, BUTTON_A, 100ms, 200ms);
