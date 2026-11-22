@@ -1949,6 +1949,10 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     }
     open_research_list(env, context);
 
+    //  Closing the menu starts a short scene. It ends back in the
+    //  director's office with the next quest (back to Hotel Z) and a save.
+    clear_dialogs(env, context, "After Mable's Research", true);
+
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
     GO_HOME_WHEN_DONE.run_end_of_program(context);
 }

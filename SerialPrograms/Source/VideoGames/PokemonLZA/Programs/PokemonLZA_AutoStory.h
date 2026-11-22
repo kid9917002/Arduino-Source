@@ -14,7 +14,8 @@
  *    ZA-12  first catch, Bunnelby battle + catch (vision), catch Scatterbug
  *           and Weedle without battling (vision), leave Wild Zone 1 (vision)
  *  ZA-13  walk to the Pokemon lab (minimap "!"), elevator to 3F, talk to
- *         Mable (world "!"), open the research list in the menu, close it.
+ *         Mable (world "!"), open the research list in the menu, close it,
+ *         and clear the scene after it (ends on the "back to Hotel Z" quest).
  *  Dialogs in the lab part are cleared by vision, not recorded A presses,
  *  so it works in any game language.
  *
