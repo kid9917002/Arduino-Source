@@ -1565,15 +1565,15 @@ void AutoStoryMultiLang::clear_dialogs(
     //  dialog box: wait a bit longer.
     //  (Only when waiting for a dialog: a plain "wait for things to settle"
     //  call keeps the quiet time it asked for.)
-    Milliseconds QUIET_NEEDED = (m_hud_expected || !require_dialog)
+    const Milliseconds QUIET_NEEDED = (m_hud_expected || !require_dialog)
         ? quiet
         : std::max<Milliseconds>(quiet, 6000ms);
 
-    //  Waiting for the logo video: gaps before it do not end the dialogs, and
-    //  after it only a few lines are left, so a shorter quiet time is enough.
+    //  Waiting for the logo video: gaps before it do not end the dialogs.
+    //  (After it, the Pancham cutscene has no dialog box for a while, so the
+    //  normal quiet time still applies.)
     const bool logo_needed = m_logo_video_expected && require_dialog;
     bool logo_seen = false;
-    const Milliseconds QUIET_AFTER_LOGO = 3000ms;
 
     //  Waiting for the new quest: once the dialogs are over and the yellow
     //  "!" shows up, the story part is done. (Otherwise the quiet time rule
@@ -1618,7 +1618,6 @@ void AutoStoryMultiLang::clear_dialogs(
             pbf_press_button(context, BUTTON_PLUS, 3000ms, 500ms);
             if (logo_needed && !logo_seen){
                 logo_seen = true;
-                QUIET_NEEDED = QUIET_AFTER_LOGO;
                 m_logo_video_expected = false;
             }
             activity_seen = true;
