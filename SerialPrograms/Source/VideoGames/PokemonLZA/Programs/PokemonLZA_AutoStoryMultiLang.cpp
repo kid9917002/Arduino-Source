@@ -1547,9 +1547,15 @@ void AutoStoryMultiLang::clear_dialogs(
     //  dialog box: wait a bit longer.
     //  (Only when waiting for a dialog: a plain "wait for things to settle"
     //  call keeps the quiet time it asked for.)
-    const Milliseconds QUIET_NEEDED = (m_hud_expected || !require_dialog)
+    Milliseconds QUIET_NEEDED = (m_hud_expected || !require_dialog)
         ? quiet
         : std::max<Milliseconds>(quiet, 6000ms);
+
+    //  Waiting for the logo video: gaps before it do not end the dialogs, and
+    //  after it only a few lines are left, so a shorter quiet time is enough.
+    const bool logo_needed = m_logo_video_expected && require_dialog;
+    bool logo_seen = false;
+    const Milliseconds QUIET_AFTER_LOGO = 3000ms;
 
     WallClock start = current_time();
     WallClock last_activity = start;
@@ -1587,6 +1593,11 @@ void AutoStoryMultiLang::clear_dialogs(
         if (logo_video(snapshot)){
             env.log("Logo video: holding + to skip it.");
             pbf_press_button(context, BUTTON_PLUS, 3000ms, 500ms);
+            if (logo_needed && !logo_seen){
+                logo_seen = true;
+                QUIET_NEEDED = QUIET_AFTER_LOGO;
+                m_logo_video_expected = false;
+            }
             activity_seen = true;
             last_activity = current_time();
             last_dialog = last_activity;
@@ -1663,6 +1674,10 @@ void AutoStoryMultiLang::clear_dialogs(
         }else if (!hud || letterbox.detect(snapshot)){
             //  Fade, loading or a cutscene: not done yet.
             last_activity = current_time();
+        }else if (logo_needed && !logo_seen && now - start < std::chrono::seconds(150)){
+            //  The logo video has not played yet: the story is not over.
+            //  (Give up after 150 s and fall back to the quiet time.)
+            last_activity = now;
         }else if (now - last_activity >= QUIET_NEEDED){
             if (activity_seen || !require_dialog || waited_long){
                 env.log(
@@ -3215,7 +3230,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  ZA-01: train station, chase Pancham.
     if (start <= StartPoint::TrainStation){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Train station.");
+        m_logo_video_expected = true;
         run_macro(env, context, MACRO_STATION);
+        m_logo_video_expected = false;
     }
 
     //  ZA-02: chase Pancham, pick starter.

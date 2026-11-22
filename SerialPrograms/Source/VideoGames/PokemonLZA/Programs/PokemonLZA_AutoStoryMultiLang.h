@@ -189,6 +189,9 @@ private:
     //  Until then, dialog clearing cannot use it to tell the overworld from
     //  a scene.
     bool m_hud_expected = true;
+    //  Set while a macro whose dialogs end with the Z-A logo video runs:
+    //  its dialogs are not over until that video was seen.
+    bool m_logo_video_expected = false;
 
     //  OCR language for the chosen game language (both Spanish -> Spanish).
     Language ocr_language() const;
