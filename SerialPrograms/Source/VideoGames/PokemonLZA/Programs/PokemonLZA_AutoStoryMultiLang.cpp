@@ -1220,7 +1220,27 @@ bool overworld_hud(const ImageViewRGB32& screen){
     };
     double arrow = fraction(ImageFloatBox(0.018, 0.895, 0.016, 0.035), true);
     double lead = fraction(ImageFloatBox(0.040, 0.875, 0.038, 0.090), false);
-    return arrow >= 0.15 && lead >= 0.08;
+    if (arrow >= 0.15 && lead >= 0.08){
+        return true;
+    }
+
+    //  Only one Pokemon (e.g. right after the first battle): no small slots
+    //  and no left arrow, but the lead panel has its own green HP bar.
+    ImageViewRGB32 bar = extract_box_reference(screen, ImageFloatBox(0.046, 0.938, 0.024, 0.014));
+    size_t green = 0;
+    size_t bar_total = 0;
+    for (size_t y = 0; y < bar.height(); y++){
+        for (size_t x = 0; x < bar.width(); x++){
+            uint32_t pixel = bar.pixel(x, y);
+            int r = (pixel >> 16) & 0xff;
+            int g = (pixel >>  8) & 0xff;
+            int b = (pixel >>  0) & 0xff;
+            bar_total++;
+            green += (g >= 150 && g >= r + 40 && g >= b + 40) ? 1 : 0;
+        }
+    }
+    double bar_green = bar_total == 0 ? 0.0 : (double)green / (double)bar_total;
+    return bar_green >= 0.20 && lead >= 0.08;
 }
 
 namespace{
@@ -1536,7 +1556,11 @@ void AutoStoryMultiLang::clear_dialogs(
 
     //  Before the starter there is no party bar, so "quiet" only means no
     //  dialog box: wait a bit longer.
-    const Milliseconds QUIET_NEEDED = m_hud_expected ? quiet : std::max<Milliseconds>(quiet, 6000ms);
+    //  (Only when waiting for a dialog: a plain "wait for things to settle"
+    //  call keeps the quiet time it asked for.)
+    const Milliseconds QUIET_NEEDED = (m_hud_expected || !require_dialog)
+        ? quiet
+        : std::max<Milliseconds>(quiet, 6000ms);
 
     WallClock start = current_time();
     WallClock last_activity = start;
@@ -1546,6 +1570,11 @@ void AutoStoryMultiLang::clear_dialogs(
     WallClock last_blind_press = start - std::chrono::seconds(10);
     WallClock last_dialog = start;
     WallClock last_skip = start - std::chrono::seconds(30);
+    //  Holding + twice without any dialog in between means this is not a
+    //  video: the HUD is there, it just was not recognized. From then on,
+    //  "not black and no cutscene bars" counts as the overworld.
+    size_t skips_without_dialog = 0;
+    bool hud_fallback = false;
 
     if (press_first){
         //  Talk to someone / advance the first line.
@@ -1576,6 +1605,7 @@ void AutoStoryMultiLang::clear_dialogs(
         }
 
         if (dialog_on_screen(snapshot)){
+            skips_without_dialog = 0;
             pbf_press_button(context, BUTTON_A, 100ms, 200ms);
             presses++;
             activity_seen = true;
@@ -1597,7 +1627,7 @@ void AutoStoryMultiLang::clear_dialogs(
 
         CutsceneLetterboxDetector letterbox_check;
         bool hud = false;
-        if (m_hud_expected){
+        if (m_hud_expected && !hud_fallback){
             hud = overworld_hud(snapshot);
         }else{
             //  No party bar yet (before the starter): no dialog, not black
@@ -1606,6 +1636,8 @@ void AutoStoryMultiLang::clear_dialogs(
         }
         if (!hud){
             activity_seen = true;
+        }else{
+            skips_without_dialog = 0;
         }
         CutsceneLetterboxDetector letterbox;
         if (!hud && !is_black(snapshot, 80, 40) &&
@@ -1615,6 +1647,13 @@ void AutoStoryMultiLang::clear_dialogs(
         ){
             //  No HUD and no dialog for a while: a video (or a scene with
             //  nothing to read). Hold + to skip it.
+            if (m_hud_expected && skips_without_dialog >= 2){
+                env.log("+ did not change anything: treating this screen as the overworld.", COLOR_RED);
+                hud_fallback = true;
+                last_activity = current_time();
+                continue;
+            }
+            skips_without_dialog++;
             env.log("No HUD and no dialog: holding + to skip the video.");
             pbf_press_button(context, BUTTON_PLUS, 2500ms, 300ms);
             last_skip = current_time();
@@ -3198,7 +3237,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     if (start <= StartPoint::ChooseStarter){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");
         //  The "which one?" lines must be over before walking to a starter.
-        clear_dialogs(env, context, "Before choosing the starter", false, 4000ms, false, std::chrono::seconds(20));
+        clear_dialogs(env, context, "Before choosing the starter", false, 1500ms, false, std::chrono::seconds(20));
         run_macro(env, context, starter_macro_filename());
         m_hud_expected = true;
     }
