@@ -61,6 +61,13 @@ void make_party_slot_overlays(VideoOverlaySet& items, Color color = COLOR_GREEN)
 //  on screen.
 bool read_camera_heading(const ImageViewRGB32& screen, double& degrees);
 
+//  Find the dark "1" pentagon (Wild Zone 1 marker) on the minimap. The
+//  player is always at the minimap center, so this gives the player's
+//  position relative to that landmark. dx/dy are the pentagon's offset from
+//  the minimap center in units of the frame width (x east, y south).
+//  Returns false if it is not found (covered by the view cone, off the map).
+bool find_minimap_zone_marker(const ImageViewRGB32& screen, double& dx, double& dy);
+
 //  While ZL is held on a wild Pokemon, a label with its level, name and a
 //  green HP bar floats above it. Find that HP bar. Returns false if there is
 //  no locked target. The name is just above the bar.

@@ -213,6 +213,96 @@ bool read_camera_heading(const ImageViewRGB32& screen, double& degrees){
 
 
 
+bool find_minimap_zone_marker(const ImageViewRGB32& screen, double& dx, double& dy){
+    const double CENTER_X = 0.0960;
+    const double CENTER_Y = 0.1655;
+    const double RADIUS = 0.055;    //  in frame widths
+
+    double width = (double)screen.width();
+    double height = (double)screen.height();
+    if (width < 100 || height < 100){
+        return false;
+    }
+
+    //  Square around the minimap, in normalized coordinates.
+    double r_x = RADIUS;
+    double r_y = RADIUS * width / height;
+    ImageFloatBox box(CENTER_X - r_x, CENTER_Y - r_y, 2 * r_x, 2 * r_y);
+    ImageViewRGB32 area = extract_box_reference(screen, box);
+
+    //  The marker is dark and unsaturated. The map itself (beige, white,
+    //  green) is bright, and the player arrow is bright blue.
+    PackedBinaryMatrix matrix = compress_rgb32_to_binary_range(
+        area,
+        0, 150,
+        0, 150,
+        0, 150
+    );
+    std::vector<WaterfillObject> objects = find_objects_inplace(matrix, 20);
+
+    double cx_px = CENTER_X * width - (double)(size_t)(box.x * width);
+    double cy_px = CENTER_Y * height - (double)(size_t)(box.y * height);
+    double min_area = 0.00004 * width * width;
+    double max_area = 0.0015 * width * width;
+
+    bool found = false;
+    size_t best_area = 0;
+    for (const WaterfillObject& object : objects){
+        if ((double)object.area < min_area || (double)object.area > max_area){
+            continue;
+        }
+        double ox = object.center_of_gravity_x() - cx_px;
+        double oy = object.center_of_gravity_y() - cy_px;
+        double distance = std::sqrt(ox * ox + oy * oy) / width;
+        if (distance > 0.052){
+            continue;   //  outside the minimap disk (game scene in the corners)
+        }
+
+        //  Must be unsaturated: average the object's pixels.
+        double sum_r = 0;
+        double sum_g = 0;
+        double sum_b = 0;
+        size_t count = 0;
+        //  (Pixels in the bounding box that pass the same dark filter.)
+        for (size_t y = object.min_y; y < object.max_y; y++){
+            for (size_t x = object.min_x; x < object.max_x; x++){
+                uint32_t pixel = area.pixel(x, y);
+                uint32_t r = (pixel >> 16) & 0xff;
+                uint32_t g = (pixel >>  8) & 0xff;
+                uint32_t b = (pixel >>  0) & 0xff;
+                if (r > 150 || g > 150 || b > 150){
+                    continue;
+                }
+                sum_r += r;
+                sum_g += g;
+                sum_b += b;
+                count++;
+            }
+        }
+        if (count == 0){
+            continue;
+        }
+        double ar = sum_r / count;
+        double ag = sum_g / count;
+        double ab = sum_b / count;
+        double mx = std::max(ar, std::max(ag, ab));
+        double mn = std::min(ar, std::min(ag, ab));
+        if (mx - mn > 60){
+            continue;
+        }
+
+        if (object.area > best_area){
+            best_area = object.area;
+            dx = ox / width;
+            dy = oy / width;
+            found = true;
+        }
+    }
+    return found;
+}
+
+
+
 bool find_locked_target_hp_bar(const ImageViewRGB32& screen, ImageFloatBox& bar, std::string* debug){
     size_t width = screen.width();
     size_t height = screen.height();

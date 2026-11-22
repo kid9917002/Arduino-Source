@@ -95,6 +95,12 @@ public:
         LeaveWildZone,      //  ZA-12-6, right after catching Weedle
     };
 
+    //  How to get around Wild Zone 1 after catching Scatterbug.
+    enum class WildZoneWalk{
+        MinimapNavigation,  //  steer by the minimap (position + camera heading)
+        RecordedMacros,     //  play ZA-12-5 / ZA-12-6 as recorded
+    };
+
     //  Camera handling for the Wild Zone walks.
     enum class CameraMode{
         FaceNorthBeforeWalks,   //  normal run: face north before ZA-12-5 / ZA-12-6
@@ -140,6 +146,15 @@ private:
         const std::string& slug, const std::string& display_name
     );
 
+    //  Walk to a spot in Wild Zone 1 by the minimap. The spot is the
+    //  player's position relative to the "1" zone marker, in frame widths
+    //  (x east, y south). Returns the last stick direction used.
+    //  Throws if it cannot get there.
+    std::pair<double, double> navigate_by_minimap(
+        SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+        const std::string& name, double target_x, double target_y, double tolerance
+    );
+
     //  Press A on the "A 離開" prompt at the Wild Zone gate.
     void leave_wild_zone(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
@@ -158,6 +173,7 @@ private:
     StringOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
     OCR::LanguageOCROption LANGUAGE;
+    EnumDropdownOption<WildZoneWalk> WILD_ZONE_WALK;
     EnumDropdownOption<CameraMode> CAMERA_MODE;
     EnumDropdownOption<CharacterLook> CHARACTER;
     EnumDropdownOption<Starter> STARTER;

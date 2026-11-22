@@ -5,6 +5,7 @@
  */
 
 #include <algorithm>
+#include <cmath>
 #include "Common/Cpp/Exceptions.h"
 #include "Common/Cpp/Time.h"
 #include "Common/Cpp/Json/JsonValue.h"
@@ -89,6 +90,14 @@ const char* MACRO_AFTER_BUNNELBY    = "ZA-12-3-掘掘兔捕捉結束劇情.json"
 const char* MACRO_WALK_TO_SCATTERBUG = "ZA-12-4-走向粉蝶蟲.json";
 const char* MACRO_WALK_TO_WEEDLE    = "ZA-12-5-走向獨角蟲.json";
 const char* MACRO_WALK_TO_GATE      = "ZA-12-6-走向大門.json";
+
+//  Wild Zone 1 spots for minimap navigation: the player's position relative
+//  to the "1" zone marker on the minimap, in frame widths (x east, y south).
+//  Measured from screenshots taken at each spot.
+const double WEEDLE_SPOT_X = -0.0019;
+const double WEEDLE_SPOT_Y =  0.0058;
+const double GATE_SPOT_X   = -0.0298;
+const double GATE_SPOT_Y   =  0.0184;
 
 }
 
@@ -182,6 +191,18 @@ AutoStory::AutoStory()
         Pokemon::PokemonNameReader::instance().languages(),
         LockMode::LOCK_WHILE_RUNNING
     )
+    , WILD_ZONE_WALK(
+        "<b>Wild Zone Walking (ZA-12-5 / ZA-12-6):</b><br>"
+        "Minimap navigation finds the player's position from the \"1\" zone marker on the "
+        "minimap and the camera direction from the view cone, then steers to Weedle and to "
+        "the gate. Recorded macros play ZA-12-5 / ZA-12-6 instead.",
+        {
+            {WildZoneWalk::MinimapNavigation, "minimap", "Minimap navigation"},
+            {WildZoneWalk::RecordedMacros,    "macros",  "Recorded macros (ZA-12-5 / ZA-12-6)"},
+        },
+        LockMode::LOCK_WHILE_RUNNING,
+        WildZoneWalk::MinimapNavigation
+    )
     , CAMERA_MODE(
         "<b>Camera Mode:</b><br>"
         "Catching turns the camera toward the target, so normal runs face the camera north "
@@ -232,6 +253,7 @@ AutoStory::AutoStory()
     PA_ADD_OPTION(MACRO_FOLDER);
     PA_ADD_OPTION(LANGUAGE);
     PA_ADD_OPTION(START_POINT);
+    PA_ADD_OPTION(WILD_ZONE_WALK);
     PA_ADD_OPTION(CAMERA_MODE);
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(STARTER);
@@ -637,6 +659,8 @@ void AutoStory::catch_wild_pokemon(
     const int MAX_LOCK_TRIES = 30;  //  about 1.5 turns of the camera
     const int MAX_THROWS = 6;
     int throws = 0;
+    std::string previous_read;
+    std::string last_read;
 
     for (int attempt = 1; attempt <= MAX_LOCK_TRIES; attempt++){
         context.wait_for_all_requests();
@@ -689,6 +713,7 @@ void AutoStory::catch_wild_pokemon(
                     is_target = true;
                 }
             }
+            last_read = names;
             env.log("Locked onto: " + (names.empty() ? std::string("(unreadable)") : names));
             if (!is_target && attempt <= 3 && snapshot.frame){
                 std::string path = "AutoStory-ZL-" + slug + "-name-" + std::to_string(attempt) + ".png";
@@ -706,10 +731,15 @@ void AutoStory::catch_wild_pokemon(
         }
 
         if (!is_target){
-            //  Let go of ZL, turn the camera a little and try the next one.
+            //  Let go of ZL, turn the camera and try the next one. Lock-on
+            //  sticks to the nearest Pokemon, so if the same wrong one comes
+            //  back, turn further to get it out of view.
+            std::string current = locked ? last_read : std::string();
+            bool same_again = locked && current == previous_read;
+            previous_read = current;
             command.stop_session_and_rethrow();
             context.wait_for_all_requests();
-            pbf_move_right_joystick(context, {1, 0}, 120ms, 400ms);
+            pbf_move_right_joystick(context, {1, 0}, same_again ? 400ms : 120ms, 400ms);
             continue;
         }
 
@@ -766,6 +796,126 @@ void AutoStory::catch_wild_pokemon(
         ErrorReportMode::NO_ERROR_REPORT,
         "catch_wild_pokemon(): Failed to catch " + display_name + ". "
         "Check that the walking macro ends with it in view.",
+        env.console
+    );
+}
+
+
+
+std::pair<double, double> AutoStory::navigate_by_minimap(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::string& name, double target_x, double target_y, double tolerance
+){
+    env.log("Navigating to " + name + " by the minimap.");
+    env.console.overlay().add_log("Go to " + name);
+
+    const double PI = 3.14159265358979323846;
+
+    //  Read the player position (relative to the zone marker) and the camera
+    //  heading. A few tries to ride out icons and popups.
+    auto read_state = [&](double& x, double& y, double& heading) -> bool{
+        for (int c = 0; c < 5; c++){
+            context.wait_for_all_requests();
+            VideoSnapshot snapshot = env.console.video().snapshot();
+            double marker_dx = 0;
+            double marker_dy = 0;
+            double h = 0;
+            if (find_minimap_zone_marker(snapshot, marker_dx, marker_dy) &&
+                read_camera_heading(snapshot, h)
+            ){
+                x = -marker_dx;
+                y = -marker_dy;
+                heading = h;
+                return true;
+            }
+            context.wait_for(150ms);
+        }
+        return false;
+    };
+
+    double speed = 0.00002;     //  frame widths per ms of walking (re-measured)
+    double stick_x = 0;
+    double stick_y = 1;
+    int read_failures = 0;
+    int stuck = 0;
+
+    for (int step = 0; step < 60; step++){
+        double x = 0;
+        double y = 0;
+        double heading = 0;
+        if (!read_state(x, y, heading)){
+            read_failures++;
+            env.log("Unable to read the minimap. Stepping the same way.", COLOR_RED);
+            if (read_failures > 8){
+                OperationFailedExceptionWithScreenshot::fire(
+                    ErrorReportMode::NO_ERROR_REPORT,
+                    "navigate_by_minimap(): Unable to read the minimap on the way to " + name + ".",
+                    env.console
+                );
+            }
+            pbf_move_left_joystick(context, {stick_x, stick_y}, 250ms, 250ms);
+            continue;
+        }
+        read_failures = 0;
+
+        double dx = target_x - x;
+        double dy = target_y - y;
+        double distance = std::sqrt(dx * dx + dy * dy);
+        env.log(
+            name + ": at (" + std::to_string(x) + ", " + std::to_string(y) +
+            "), heading " + std::to_string((int)heading) +
+            ", distance " + std::to_string(distance)
+        );
+        if (distance <= tolerance){
+            env.log("Arrived at " + name + ".", COLOR_BLUE);
+            env.console.overlay().add_log("At " + name);
+            return {stick_x, stick_y};
+        }
+
+        //  Bearing to the target (0 = north, clockwise), then relative to
+        //  the camera. Up on the left stick walks the way the camera faces.
+        double bearing = std::atan2(dx, -dy) * 180.0 / PI;
+        double relative = (bearing - heading) * PI / 180.0;
+
+        //  Blocked last time: step sideways (alternating) to get around it.
+        if (stuck > 0){
+            relative += (stuck % 2 == 1 ? 1 : -1) * PI / 2;
+        }
+        stick_x = std::sin(relative);
+        stick_y = std::cos(relative);
+
+        double push_ms = stuck > 0 ? 500.0 : distance / speed * 0.7;
+        push_ms = std::max(150.0, std::min(push_ms, 1200.0));
+        pbf_move_left_joystick(context, {stick_x, stick_y}, Milliseconds((int64_t)push_ms), 300ms);
+
+        //  How far did that get us?
+        double new_x = 0;
+        double new_y = 0;
+        double new_heading = 0;
+        if (read_state(new_x, new_y, new_heading)){
+            double moved = std::sqrt((new_x - x) * (new_x - x) + (new_y - y) * (new_y - y));
+            if (moved < 0.0015 && push_ms >= 300){
+                stuck++;
+                env.log("Barely moved. Trying to go around (" + std::to_string(stuck) + ").", COLOR_RED);
+                if (stuck > 8){
+                    OperationFailedExceptionWithScreenshot::fire(
+                        ErrorReportMode::NO_ERROR_REPORT,
+                        "navigate_by_minimap(): Stuck on the way to " + name + ".",
+                        env.console
+                    );
+                }
+            }else{
+                if (stuck == 0 && moved > 0.001){
+                    speed = 0.5 * speed + 0.5 * (moved / push_ms);
+                }
+                stuck = 0;
+            }
+        }
+    }
+
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "navigate_by_minimap(): Did not reach " + name + ".",
         env.console
     );
 }
@@ -1116,16 +1266,39 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     }
     if (start <= StartPoint::CatchWeedle){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
-        //  Catching Scatterbug turned the camera. Reset it first.
-        face_camera_north(env, context);
-        run_macro(env, context, MACRO_WALK_TO_WEEDLE);
+        if (WILD_ZONE_WALK.get() == WildZoneWalk::MinimapNavigation){
+            navigate_by_minimap(env, context, "Weedle spot", WEEDLE_SPOT_X, WEEDLE_SPOT_Y, 0.004);
+        }else{
+            //  Catching Scatterbug turned the camera. Reset it first.
+            face_camera_north(env, context);
+            run_macro(env, context, MACRO_WALK_TO_WEEDLE);
+        }
         catch_wild_pokemon(env, context, "weedle", "Weedle");
     }
 
     //  ZA-12: leave Wild Zone 1. Stops once outside.
     send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
-    face_camera_north(env, context);
-    run_macro(env, context, MACRO_WALK_TO_GATE);
+    if (WILD_ZONE_WALK.get() == WildZoneWalk::MinimapNavigation){
+        std::pair<double, double> stick = navigate_by_minimap(
+            env, context, "Gate", GATE_SPOT_X, GATE_SPOT_Y, 0.004
+        );
+
+        //  Close enough to the gate. If the exit prompt is not up yet, keep
+        //  going the same way a little at a time.
+        const ImageFloatBox PROMPT_BOX(0.50, 0.53, 0.10, 0.12);
+        for (int c = 0; c < 6; c++){
+            context.wait_for_all_requests();
+            ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
+            if (wait_until(env.console, context, 1000ms, {prompt}) == 0){
+                break;
+            }
+            env.log("No exit prompt yet. Stepping toward the gate.");
+            pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
+        }
+    }else{
+        face_camera_north(env, context);
+        run_macro(env, context, MACRO_WALK_TO_GATE);
+    }
     leave_wild_zone(env, context);
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
