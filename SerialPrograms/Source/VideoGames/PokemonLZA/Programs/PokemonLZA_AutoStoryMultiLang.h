@@ -195,6 +195,9 @@ private:
     //  Set only while the Pancham chase macro (ZA-02-0) runs: its dialogs are
     //  over as soon as the new quest (yellow "!" at the top left) shows up.
     bool m_quest_icon_expected = false;
+    //  Set when the station dialogs ended on the movement tutorial icon: no
+    //  more dialog comes before the Pancham chase.
+    bool m_movement_tutorial_seen = false;
 
     //  OCR language for the chosen game language (both Spanish -> Spanish).
     Language ocr_language() const;

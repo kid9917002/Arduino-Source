@@ -1693,6 +1693,7 @@ void AutoStoryMultiLang::clear_dialogs(
                 COLOR_BLUE
             );
             m_logo_video_expected = false;
+            m_movement_tutorial_seen = true;
             return;
         }
 
@@ -3274,6 +3275,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
 
     //  No party bar on the overworld until the starter is picked.
     m_hud_expected = start > StartPoint::ChooseStarter;
+    m_logo_video_expected = false;
+    m_quest_icon_expected = false;
+    m_movement_tutorial_seen = false;
     const bool from_beginning = start <= StartPoint::CreateCharacter;
 
     //  Connect the controller.
@@ -3342,7 +3346,11 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Chasing Pancham.");
         //  Start walking as soon as the station dialogs are over (the macro
         //  used to wait a fixed 8 seconds for them).
-        clear_dialogs(env, context, "Before chasing Pancham", false, 1500ms, false, std::chrono::seconds(20));
+        //  (Not needed when the movement tutorial already showed up: there is
+        //  no more dialog then, and a press could talk to the rival.)
+        if (!m_movement_tutorial_seen){
+            clear_dialogs(env, context, "Before chasing Pancham", false, 1500ms, false, std::chrono::seconds(20));
+        }
         m_quest_icon_expected = true;
         run_macro(env, context, MACRO_CHASE_PANCHAM);
         m_quest_icon_expected = false;
