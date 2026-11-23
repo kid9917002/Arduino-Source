@@ -1691,6 +1691,8 @@ void AutoStoryMultiLang::clear_dialogs(
     bool activity_seen = false;     //  a dialog, or the HUD went away
     bool waited_long = false;
     WallClock last_blind_press = start - std::chrono::seconds(10);
+    //  Since when the screen has had no HUD and no dialog (for blind A).
+    WallClock quiet_scene_since = start;
     WallClock last_dialog = start;
     WallClock last_skip = start - std::chrono::seconds(30);
     //  Holding + twice without any dialog in between means this is not a
@@ -1745,7 +1747,15 @@ void AutoStoryMultiLang::clear_dialogs(
             return;
         }
 
-        if (const char* kind = dialog_kind(snapshot)){
+        const char* kind = dialog_kind(snapshot);
+        //  The battle-text detector also fires on bright overworld ground
+        //  (e.g. after the map tutorial). Battle text never shows with the
+        //  overworld HUD, so ignore it then.
+        if (kind != nullptr && m_hud_expected && std::string(kind) == "TransparentBattleDialog" && overworld_hud(snapshot)){
+            kind = nullptr;
+        }
+        if (kind != nullptr){
+            quiet_scene_since = current_time();
             //  Log which detector fired (once per change, or every 5 s), so
             //  a false detection can be found in the log.
             if (last_kind != kind || current_time() - last_kind_log >= std::chrono::seconds(5)){
@@ -1765,6 +1775,7 @@ void AutoStoryMultiLang::clear_dialogs(
         //  A menu screen the story opened (ZA Royale, MAP, POKEDEX...):
         //  nothing to read on it any more, so close it with B.
         if (b_close_screen(snapshot)){
+            quiet_scene_since = current_time();
             env.log("Menu screen with a B (close) button. Pressing B.");
             pbf_press_button(context, BUTTON_B, 100ms, 700ms);
             activity_seen = true;
@@ -1786,6 +1797,9 @@ void AutoStoryMultiLang::clear_dialogs(
             activity_seen = true;
         }else{
             skips_without_dialog = 0;
+        }
+        if (hud || is_black(snapshot, 80, 40)){
+            quiet_scene_since = current_time();
         }
         CutsceneLetterboxDetector letterbox;
         if (m_hud_expected && !hud && !is_black(snapshot, 80, 40) &&
@@ -1826,7 +1840,10 @@ void AutoStoryMultiLang::clear_dialogs(
             //  Story scene without the HUD. Some dialog boxes have no fixed
             //  shape (e.g. the jagged white "shout" bubble), so press A
             //  slowly while the HUD is gone. A does nothing in a cutscene.
-            if (current_time() - last_blind_press >= 700ms){
+            //  Only after 2 s of this: right after a tutorial card closes, the
+            //  MAP screen fades in before its B (close) button can be seen,
+            //  and an A there sets a map marker.
+            if (current_time() - quiet_scene_since >= 2000ms && current_time() - last_blind_press >= 700ms){
                 if (last_kind != BLIND || current_time() - last_kind_log >= std::chrono::seconds(5)){
                     env.log("A: blind (no HUD, no dialog)");
                     last_kind = BLIND;
