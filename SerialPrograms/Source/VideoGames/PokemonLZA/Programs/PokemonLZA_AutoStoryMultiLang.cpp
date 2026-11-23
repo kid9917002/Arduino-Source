@@ -310,12 +310,7 @@ void AutoStoryMultiLang::run_macro(
 
     context.wait_for_all_requests();
 
-    std::string folder = FULL_GAME ? std::string(MACRO_FOLDER_DEFAULT) : std::string(MACRO_FOLDER);
-    std::string path = folder;
-    if (!path.empty() && path.back() != '/' && path.back() != '\\'){
-        path += "/";
-    }
-    path += filename;
+    std::string path = macro_file_path(filename);
 
     std::string text;
     if (!file_to_string(path, text)){
@@ -439,15 +434,59 @@ void AutoStoryMultiLang::run_macro(
 
 
 
+std::string AutoStoryMultiLang::macro_file_path(const std::string& filename) const{
+    std::string path = FULL_GAME ? std::string(MACRO_FOLDER_DEFAULT) : std::string(MACRO_FOLDER);
+    if (!path.empty() && path.back() != '/' && path.back() != '\\'){
+        path += "/";
+    }
+    return path + filename;
+}
+
 void AutoStoryMultiLang::story_dialog(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
     const std::string& name, Milliseconds wait_before, Milliseconds wait_after
 ){
     //  A step that is only story dialog: talk / advance (A), clear the
     //  dialogs by detection, then wait like the recorded macro did.
+    //
+    //  story_dialog.json in the macro folder may override the numbers:
+    //      { "ZA-03-0 battle zone": { "before": 10, "after": 0, "quiet": 4000 }, ... }
+    //  A missing file, step or key keeps the default below.
+    Milliseconds quiet = 4000ms;
+    const char* source = "default";
+    std::string path = macro_file_path("story_dialog.json");
+    std::string text;
+    if (file_to_string(path, text)){
+        if (text.size() >= 3 &&
+            (uint8_t)text[0] == 0xef &&
+            (uint8_t)text[1] == 0xbb &&
+            (uint8_t)text[2] == 0xbf
+        ){
+            text.erase(0, 3);
+        }
+        try{
+            JsonValue json = parse_json(text);
+            const JsonObject* all = json.to_object();
+            const JsonObject* step = all == nullptr ? nullptr : all->get_object(name);
+            if (step != nullptr){
+                wait_before = Milliseconds(step->get_integer_default("before", wait_before.count()));
+                wait_after  = Milliseconds(step->get_integer_default("after",  wait_after.count()));
+                quiet       = Milliseconds(step->get_integer_default("quiet",  quiet.count()));
+                source = "story_dialog.json";
+            }
+        }catch (Exception& e){
+            env.log("story_dialog.json is not valid JSON, using the defaults: " + e.message(), COLOR_RED);
+        }
+    }
+    env.log(
+        "Story dialog " + name + " (" + source + "): before " + std::to_string(wait_before.count()) +
+        " ms, after " + std::to_string(wait_after.count()) +
+        " ms, quiet " + std::to_string(quiet.count()) + " ms"
+    );
+
     context.wait_for_all_requests();
     context.wait_for(wait_before);
-    clear_dialogs(env, context, name, true, 4000ms, true, std::chrono::seconds(20));
+    clear_dialogs(env, context, name, true, quiet, true, std::chrono::seconds(20));
     context.wait_for(wait_after);
 }
 
@@ -3406,7 +3445,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  ZA-03: battle zone, escape.
     if (start <= StartPoint::BattleZone){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Battle zone.");
-        story_dialog(env, context, "ZA-03-0 battle zone", 200ms, 0ms);
+        story_dialog(env, context, "ZA-03-0 battle zone", 0ms, 200ms);
     }
     if (start <= StartPoint::EscapeBattleZone){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Escaping the battle zone.");

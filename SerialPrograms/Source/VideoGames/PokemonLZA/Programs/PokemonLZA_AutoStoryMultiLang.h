@@ -207,10 +207,13 @@ private:
     //  and wait for the LOOKS screen.
     //  A story step that is only dialog (no walking): wait, clear the dialogs
     //  by detection, wait. Replaces macros that held only a dialog marker.
+    //  The waits and the quiet time can be overridden per step in
+    //  story_dialog.json in the macro folder.
     void story_dialog(
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
         const std::string& name, Milliseconds wait_before, Milliseconds wait_after
     );
+    std::string macro_file_path(const std::string& filename) const;
 
     void launch_and_pick_language(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
