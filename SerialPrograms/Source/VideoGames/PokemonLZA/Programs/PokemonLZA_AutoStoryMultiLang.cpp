@@ -1685,6 +1685,11 @@ void AutoStoryMultiLang::clear_dialogs(
     //  still ends it.)
     const bool quest_shortcut = m_quest_icon_expected && require_dialog;
 
+    //  Right before a trainer battle: stop on the "... wants to battle!"
+    //  text (battle text with no overworld HUD) without pressing A, and let
+    //  run_trainer_battle() take over.
+    const bool challenge_stop = m_battle_challenge_expected && require_dialog;
+
     WallClock start = current_time();
     WallClock last_activity = start;
     size_t presses = 0;
@@ -1751,6 +1756,13 @@ void AutoStoryMultiLang::clear_dialogs(
         //  overworld HUD, so ignore it then.
         if (kind != nullptr && m_hud_expected && std::string(kind) == "TransparentBattleDialog" && overworld_hud(snapshot)){
             kind = nullptr;
+        }
+        if (kind != nullptr && challenge_stop && std::string(kind) == "TransparentBattleDialog" && !overworld_hud(snapshot)){
+            env.log(
+                "Battle challenge shown: handing over to the battle (" + std::to_string(presses) + " A presses): " + name,
+                COLOR_BLUE
+            );
+            return;
         }
         if (kind != nullptr){
             //  Log which detector fired (once per change, or every 5 s), so
@@ -3358,6 +3370,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     m_logo_video_expected = false;
     m_quest_icon_expected = false;
     m_movement_tutorial_seen = false;
+    m_battle_challenge_expected = false;
     const bool from_beginning = start <= StartPoint::CreateCharacter;
 
     //  Connect the controller.
@@ -3439,7 +3452,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");
         //  The "which one?" lines must be over before walking to a starter.
         clear_dialogs(env, context, "Before choosing the starter", false, 1500ms, false, std::chrono::seconds(20));
+        m_battle_challenge_expected = true;
         run_macro(env, context, starter_macro_filename());
+        m_battle_challenge_expected = false;
         m_hud_expected = true;
     }
 
@@ -3457,7 +3472,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     if (start <= StartPoint::EscapeBattleZone){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Escaping the battle zone.");
         run_macro(env, context, MACRO_ESCAPE_0);
+        m_battle_challenge_expected = true;
         story_dialog(env, context, "ZA-03-1 escape 1", 2000ms, 200ms);
+        m_battle_challenge_expected = false;
     }
 
     //  ZA-03: waitress battle. Ends on the post-battle dialog.
@@ -3512,7 +3529,9 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
 
     //  ZA-06: the rival (Urbain or Taunie, by the player's look).
     if (start <= StartPoint::WalkToRival){
+        m_battle_challenge_expected = true;
         run_macro(env, context, MACRO_WALK_TO_RIVAL);
+        m_battle_challenge_expected = false;
     }
 
     //  ZA-06: rival battle. Ends on the post-battle dialog.

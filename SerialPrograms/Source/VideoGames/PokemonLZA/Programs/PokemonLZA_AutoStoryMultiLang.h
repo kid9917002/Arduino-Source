@@ -198,6 +198,10 @@ private:
     //  Set when the station dialogs ended on the movement tutorial icon: no
     //  more dialog comes before the Pancham chase.
     bool m_movement_tutorial_seen = false;
+    //  Set only while the dialogs right before a trainer battle are cleared:
+    //  they end on the "... wants to battle!" text, and the battle code takes
+    //  over from there.
+    bool m_battle_challenge_expected = false;
 
     //  OCR language for the chosen game language (both Spanish -> Spanish).
     Language ocr_language() const;
