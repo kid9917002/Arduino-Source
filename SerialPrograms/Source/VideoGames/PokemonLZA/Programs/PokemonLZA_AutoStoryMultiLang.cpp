@@ -454,29 +454,13 @@ void AutoStoryMultiLang::story_dialog(
     //  A missing file, step or key keeps the default below.
     Milliseconds quiet = 4000ms;
     const char* source = "default";
-    std::string path = macro_file_path("story_dialog.json");
-    std::string text;
-    if (file_to_string(path, text)){
-        if (text.size() >= 3 &&
-            (uint8_t)text[0] == 0xef &&
-            (uint8_t)text[1] == 0xbb &&
-            (uint8_t)text[2] == 0xbf
-        ){
-            text.erase(0, 3);
-        }
-        try{
-            JsonValue json = parse_json(text);
-            const JsonObject* all = json.to_object();
-            const JsonObject* step = all == nullptr ? nullptr : all->get_object(name);
-            if (step != nullptr){
-                wait_before = Milliseconds(step->get_integer_default("before", wait_before.count()));
-                wait_after  = Milliseconds(step->get_integer_default("after",  wait_after.count()));
-                quiet       = Milliseconds(step->get_integer_default("quiet",  quiet.count()));
-                source = "story_dialog.json";
-            }
-        }catch (Exception& e){
-            env.log("story_dialog.json is not valid JSON, using the defaults: " + e.message(), COLOR_RED);
-        }
+    JsonValue holder;
+    const JsonObject* step = story_dialog_step(env, name, holder);
+    if (step != nullptr){
+        wait_before = Milliseconds(step->get_integer_default("before", wait_before.count()));
+        wait_after  = Milliseconds(step->get_integer_default("after",  wait_after.count()));
+        quiet       = Milliseconds(step->get_integer_default("quiet",  quiet.count()));
+        source = "story_dialog.json";
     }
     env.log(
         "Story dialog " + name + " (" + source + "): before " + std::to_string(wait_before.count()) +
@@ -488,6 +472,45 @@ void AutoStoryMultiLang::story_dialog(
     context.wait_for(wait_before);
     clear_dialogs(env, context, name, true, quiet, true, std::chrono::seconds(20));
     context.wait_for(wait_after);
+}
+
+
+const JsonObject* AutoStoryMultiLang::story_dialog_step(
+    SingleSwitchProgramEnvironment& env, const std::string& name, JsonValue& holder
+) const{
+    std::string text;
+    if (!file_to_string(macro_file_path("story_dialog.json"), text)){
+        return nullptr;
+    }
+    if (text.size() >= 3 &&
+        (uint8_t)text[0] == 0xef &&
+        (uint8_t)text[1] == 0xbb &&
+        (uint8_t)text[2] == 0xbf
+    ){
+        text.erase(0, 3);
+    }
+    try{
+        holder = parse_json(text);
+    }catch (Exception& e){
+        env.log("story_dialog.json is not valid JSON, using the defaults: " + e.message(), COLOR_RED);
+        return nullptr;
+    }
+    const JsonObject* all = holder.to_object();
+    return all == nullptr ? nullptr : all->get_object(name);
+}
+
+Milliseconds AutoStoryMultiLang::dialog_quiet(
+    SingleSwitchProgramEnvironment& env, const std::string& name, Milliseconds quiet
+) const{
+    const char* source = "default";
+    JsonValue holder;
+    const JsonObject* step = story_dialog_step(env, name, holder);
+    if (step != nullptr){
+        quiet = Milliseconds(step->get_integer_default("quiet", quiet.count()));
+        source = "story_dialog.json";
+    }
+    env.log("Dialog quiet " + name + " (" + source + "): quiet " + std::to_string(quiet.count()) + " ms");
+    return quiet;
 }
 
 
@@ -2105,7 +2128,7 @@ void AutoStoryMultiLang::walk_to_lab(SingleSwitchProgramEnvironment& env, ProCon
         WalkResult result = walk_to_quest_marker(env, context, "Lab", true);
         if (result == WalkResult::Dialog){
             //  Getting close to the lab starts a story scene.
-            clear_dialogs(env, context, "Lab story", false);
+            { const std::string dialog_name = "ZA-13-1 Lab story"; clear_dialogs(env, context, dialog_name, false, dialog_quiet(env, dialog_name, 4000ms)); }
             pbf_press_button(context, BUTTON_L, 160ms, 500ms);
             continue;
         }
@@ -2134,13 +2157,13 @@ void AutoStoryMultiLang::walk_to_lab(SingleSwitchProgramEnvironment& env, ProCon
         }
         if (faded){
             env.log("Went through the lab door.", COLOR_BLUE);
-            clear_dialogs(env, context, "Lab entrance", false);
+            { const std::string dialog_name = "ZA-13-1 Lab entrance"; clear_dialogs(env, context, dialog_name, false, dialog_quiet(env, dialog_name, 4000ms)); }
             env.log("Inside the lab.", COLOR_BLUE);
             env.console.overlay().add_log("Inside the lab");
             return;
         }
         if (dialog){
-            clear_dialogs(env, context, "Lab door", false);
+            { const std::string dialog_name = "ZA-13-1 Lab door"; clear_dialogs(env, context, dialog_name, false, dialog_quiet(env, dialog_name, 4000ms)); }
         }else{
             env.log("Still outside the lab. Trying again.", COLOR_RED);
         }
@@ -2161,7 +2184,7 @@ void AutoStoryMultiLang::take_lab_elevator(SingleSwitchProgramEnvironment& env, 
     for (int attempt = 0; attempt < 10; attempt++){
         WalkResult result = walk_to_quest_marker(env, context, "Elevator", false);
         if (result == WalkResult::Dialog){
-            clear_dialogs(env, context, "Lab 1F", false);
+            { const std::string dialog_name = "ZA-13-2 Lab 1F"; clear_dialogs(env, context, dialog_name, false, dialog_quiet(env, dialog_name, 4000ms)); }
             continue;
         }
 
@@ -2229,7 +2252,7 @@ void AutoStoryMultiLang::take_lab_elevator(SingleSwitchProgramEnvironment& env, 
             );
         }
         env.log("No elevator menu. Trying again.", COLOR_RED);
-        clear_dialogs(env, context, "Lab 1F", false);
+        { const std::string dialog_name = "ZA-13-2 Lab 1F"; clear_dialogs(env, context, dialog_name, false, dialog_quiet(env, dialog_name, 4000ms)); }
     }
 
     OperationFailedExceptionWithScreenshot::fire(
@@ -2253,7 +2276,7 @@ void AutoStoryMultiLang::walk_to_mable(SingleSwitchProgramEnvironment& env, ProC
         //  Next to her before the scene started: talk.
         pbf_press_button(context, BUTTON_A, 160ms, 840ms);
     }
-    clear_dialogs(env, context, "Mable", true);
+    { const std::string dialog_name = "ZA-13-3 Mable"; clear_dialogs(env, context, dialog_name, true, dialog_quiet(env, dialog_name, 4000ms)); }
 }
 
 
@@ -3630,7 +3653,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     if (start <= StartPoint::LabElevator){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Lab elevator.");
         take_lab_elevator(env, context);
-        clear_dialogs(env, context, "3F story", true);
+        { const std::string dialog_name = "ZA-13-2 3F story"; clear_dialogs(env, context, dialog_name, true, dialog_quiet(env, dialog_name, 4000ms)); }
     }
     if (start <= StartPoint::LabMable){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to Mable.");
@@ -3640,7 +3663,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
 
     //  Closing the menu starts a short scene. It ends back in the
     //  director's office with the next quest (back to Hotel Z) and a save.
-    clear_dialogs(env, context, "After Mable's Research", true);
+    { const std::string dialog_name = "ZA-13-4 After Mable's Research"; clear_dialogs(env, context, dialog_name, true, dialog_quiet(env, dialog_name, 4000ms)); }
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
     GO_HOME_WHEN_DONE.run_end_of_program(context);

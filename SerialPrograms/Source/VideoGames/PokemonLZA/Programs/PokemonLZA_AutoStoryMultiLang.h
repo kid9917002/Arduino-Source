@@ -29,6 +29,7 @@
 #define PokemonAutomation_PokemonLZA_AutoStoryMultiLang_H
 
 #include "Common/Cpp/Time.h"
+#include "Common/Cpp/Json/JsonValue.h"
 #include "Common/Cpp/Options/StringOption.h"
 #include "Common/Cpp/Options/GroupOption.h"
 #include "Common/Cpp/Options/BooleanCheckBoxOption.h"
@@ -218,6 +219,16 @@ private:
         const std::string& name, Milliseconds wait_before, Milliseconds wait_after
     );
     std::string macro_file_path(const std::string& filename) const;
+    //  The step's object in story_dialog.json (nullptr if there is none).
+    //  "holder" keeps the parsed file alive.
+    const JsonObject* story_dialog_step(
+        SingleSwitchProgramEnvironment& env, const std::string& name, JsonValue& holder
+    ) const;
+    //  Quiet time of a clear_dialogs() call: "quiet" of the step in
+    //  story_dialog.json, or the default.
+    Milliseconds dialog_quiet(
+        SingleSwitchProgramEnvironment& env, const std::string& name, Milliseconds quiet
+    ) const;
 
     void launch_and_pick_language(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
