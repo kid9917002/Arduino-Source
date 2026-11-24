@@ -847,19 +847,8 @@ void AutoStoryMultiLang::catch_wild_pokemon(
             }
             last_read = names;
             env.log("Locked onto: " + (names.empty() ? std::string("(unreadable)") : names));
-            if (!is_target && attempt <= 3 && snapshot.frame){
-                std::string path = "AutoStoryML-ZL-" + slug + "-name-" + std::to_string(attempt) + ".png";
-                snapshot.frame->save(path);
-                env.log("Saved " + path);
-            }
         }else{
             env.log("Nothing to lock onto. " + debug);
-            //  Save a few of these frames so the detection can be checked.
-            if (attempt <= 3 && snapshot.frame){
-                std::string path = "AutoStoryML-ZL-" + slug + "-" + std::to_string(attempt) + ".png";
-                snapshot.frame->save(path);
-                env.log("Saved " + path);
-            }
         }
 
         if (!is_target){
@@ -1658,15 +1647,6 @@ int read_quest_marker_distance(Logger& logger, const ImageViewRGB32& screen, con
         true, true, SIZE_MAX, min_digit_area
     );
     if (number < 0 || number > 999){
-        //  Save a few of these so the number box can be checked.
-        static int saved = 0;
-        if (saved < 3){
-            saved++;
-            std::string path = "AutoStoryML-distance-" + std::to_string(saved) + ".png";
-            image.save(path);
-            screen.save("AutoStoryML-distance-full-" + std::to_string(saved) + ".png");
-            logger.log("Saved " + path);
-        }
         return -1;
     }
     return number;
@@ -2349,11 +2329,6 @@ void AutoStoryMultiLang::open_research_list(SingleSwitchProgramEnvironment& env,
             }
             if (current_time() - last_activity >= QUIET_BEFORE_B){
                 env.log("Nothing to press A on. Pressing B.");
-                if (b_presses < 3 && snapshot.frame){
-                    std::string path = "AutoStoryML-research-B-" + std::to_string(b_presses + 1) + ".png";
-                    snapshot.frame->save(path);
-                    env.log("Saved " + path);
-                }
                 pbf_press_button(context, BUTTON_B, 160ms, 840ms);
                 b_presses++;
                 last_activity = current_time();
@@ -3153,7 +3128,6 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
     };
 
     //  Candidate list (Chinese keyboards).
-    int saved_images = 0;
     auto find_candidate = [&](const std::string& character) -> int{
         context.wait_for_all_requests();
         context.wait_for(300ms);
@@ -3170,12 +3144,6 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
             }
         }
         env.log("Candidates: " + all);
-        if (found < 0 && saved_images < 3 && snapshot.frame){
-            saved_images++;
-            std::string path = "AutoStoryML-name-candidates-" + std::to_string(saved_images) + ".png";
-            snapshot.frame->save(path);
-            env.log("Saved " + path);
-        }
         return found;
     };
     auto pick_candidate = [&](int index){
