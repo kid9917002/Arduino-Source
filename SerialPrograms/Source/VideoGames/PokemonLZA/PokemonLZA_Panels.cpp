@@ -20,8 +20,10 @@
 #include "Programs/NonShinyHunting/PokemonLZA_WeatherFinder.h"
 #include "Programs/Farming/PokemonLZA_HyperspaceRewardReset.h"
 #include "Programs/Farming/PokemonLZA_DonutMaker.h"
-#include "Programs/PokemonLZA_AutoStory.h"
+
+//  Story Automation
 #include "Programs/PokemonLZA_AutoStoryMultiLang.h"
+#include "Programs/PokemonLZA_ClaimMysteryGift.h"
 
 //  Trading
 
@@ -85,8 +87,6 @@ std::vector<PanelEntry> PanelListFactory::make_panels() const{
     ret.emplace_back(make_SingleSwitchProgram<WeatherFinder>());
     ret.emplace_back(make_SingleSwitchProgram<HyperspaceRewardReset>());
     ret.emplace_back(make_SingleSwitchProgram<DonutMaker>());
-    ret.emplace_back(make_SingleSwitchProgram<AutoStory>());
-    ret.emplace_back(make_SingleSwitchProgram<AutoStoryMultiLang>());
     if (IS_BETA_VERSION){
     }
 
@@ -118,6 +118,10 @@ std::vector<PanelEntry> PanelListFactory::make_panels() const{
         ret.emplace_back(make_SingleSwitchProgram<ShinyHunt_HyperspaceHunter>());
         ret.emplace_back(make_SingleSwitchProgram<BeldumHunter>());
     }
+
+    ret.emplace_back("---- Story Automation ----");
+    ret.emplace_back(make_SingleSwitchProgram<AutoStoryMultiLang>());
+    ret.emplace_back(make_SingleSwitchProgram<ClaimMysteryGift>());
 
 //    ret.emplace_back("---- Non-Shiny Hunting ----");
     if (IS_BETA_VERSION){

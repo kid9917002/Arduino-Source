@@ -105,7 +105,7 @@ const double GATE_SPOT_Y   =  0.0184;
 AutoStoryMultiLang_Descriptor::AutoStoryMultiLang_Descriptor()
     : SingleSwitchProgramDescriptor(
         "PokemonLZA:AutoStoryMultiLang",
-        STRING_POKEMON + " LZA", "Auto Story - Multiple Lang",
+        STRING_POKEMON + " LZA", "Auto Story",
         "",
         "Play the opening of the story from a new save: create the character, "
         "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat the rival, catch Bunnelby, Scatterbug and Weedle, "
