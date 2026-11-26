@@ -4121,6 +4121,13 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
 
 
 
+//  For other LZA programs (Claim Mystery Gift): the system keyboard cursor.
+bool lza_find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
+    return find_keyboard_cursor(screen, x, y);
+}
+
+
+
 }
 }
 }
