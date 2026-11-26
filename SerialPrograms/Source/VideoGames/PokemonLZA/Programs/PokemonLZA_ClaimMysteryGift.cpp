@@ -100,18 +100,7 @@ ClaimMysteryGift_Descriptor::ClaimMysteryGift_Descriptor()
 
 
 ClaimMysteryGift::ClaimMysteryGift()
-    : START_IN(
-        "<b>Start In:</b><br>"
-        "Where the game is (with Start in Grip Menu: where it was left before going to the Grip Menu). "
-        "The game must be running.",
-        {
-            {StartIn::Overworld,        "overworld",    "Overworld (all menus closed)"},
-            {StartIn::MysteryGiftMenu,  "mystery-gift", "Mystery Gift menu (Get via Internet / Get with Code)"},
-        },
-        LockMode::LOCK_WHILE_RUNNING,
-        StartIn::Overworld
-    )
-    , METHOD(
+    : METHOD(
         "<b>Method:</b><br>"
         "The Internet list only shows the gifts that are being given out now, so gifts past their end date never show up.",
         {
@@ -209,7 +198,6 @@ ClaimMysteryGift::ClaimMysteryGift()
     GIFTS.add_option(OTHER_GIFTS, "other");
 
     PA_ADD_OPTION(START_LOCATION);
-    PA_ADD_OPTION(START_IN);
     PA_ADD_OPTION(METHOD);
     PA_ADD_OPTION(GIFTS);
     PA_ADD_OPTION(CODE);
@@ -683,9 +671,8 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
         require_player(env.console, context, BUTTON_NONE);
     }
 
-    if (START_IN == StartIn::Overworld){
-        open_mystery_gift_menu(env, context);
-    }
+    //  From the overworld (all menus closed).
+    open_mystery_gift_menu(env, context);
 
     if (METHOD == Method::Code){
         claim_via_code(env, context);

@@ -39,10 +39,6 @@ public:
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
 
 private:
-    enum class StartIn{
-        Overworld,
-        MysteryGiftMenu,
-    };
     enum class Method{
         InternetAll,
         InternetSelected,
@@ -74,7 +70,6 @@ private:
     std::vector<InternetGift> m_gifts;
 
     StartInGripOrGameOption START_LOCATION;
-    EnumDropdownOption<StartIn> START_IN;
     EnumDropdownOption<Method> METHOD;
     GroupOption GIFTS;
     //  One per gift still being given out (see the gift list in the .cpp).
