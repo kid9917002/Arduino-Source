@@ -2267,6 +2267,7 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_StatsReset.h
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_WeatherFinder.cpp
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_WeatherFinder.h
+    Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryBeta.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryMultiLang.cpp
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryMultiLang.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_ChineseReadings.cpp

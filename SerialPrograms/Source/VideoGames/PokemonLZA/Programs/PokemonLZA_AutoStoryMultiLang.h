@@ -28,6 +28,7 @@
 #ifndef PokemonAutomation_PokemonLZA_AutoStoryMultiLang_H
 #define PokemonAutomation_PokemonLZA_AutoStoryMultiLang_H
 
+#include <map>
 #include "Common/Cpp/Time.h"
 #include "Common/Cpp/Json/JsonValue.h"
 #include "Common/Cpp/Options/StringOption.h"
@@ -51,6 +52,10 @@ namespace PokemonLZA{
 class AutoStoryMultiLang_Descriptor : public SingleSwitchProgramDescriptor{
 public:
     AutoStoryMultiLang_Descriptor();
+    //  For programs built on this one (Auto Story (Beta)).
+    AutoStoryMultiLang_Descriptor(
+        std::string identifier, std::string display_name, std::string description
+    );
 
     class Stats;
     virtual std::unique_ptr<StatsTracker> make_stats() const override;
@@ -136,7 +141,7 @@ public:
     };
 
 
-private:
+protected:
     //  Load a Turbo Macro JSON file from MACRO_FOLDER and run it.
     void run_macro(
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
@@ -203,6 +208,9 @@ private:
     //  they end on the "... wants to battle!" text, and the battle code takes
     //  over from there.
     bool m_battle_challenge_expected = false;
+    //  Quiet times set by Auto Story (Beta) for the dialogs inside one of
+    //  its steps. Checked before story_dialog.json. Empty in Auto Story.
+    std::map<std::string, Milliseconds> m_quiet_overrides;
 
     //  OCR language for the chosen game language (both Spanish -> Spanish).
     Language ocr_language() const;
@@ -270,7 +278,7 @@ private:
     void open_research_list(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
 
 
-private:
+protected:
     BooleanCheckBoxOption FULL_GAME;
     GroupOption CHAPTER;
     StringOption MACRO_FOLDER;

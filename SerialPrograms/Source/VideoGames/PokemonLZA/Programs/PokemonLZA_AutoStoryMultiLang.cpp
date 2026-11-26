@@ -44,6 +44,7 @@
 #include "VideoGames/PokemonLZA/Programs/PokemonLZA_TrainerBattle.h"
 #include "PokemonLZA_ChineseReadings.h"
 #include "PokemonLZA_AutoStoryMultiLang.h"
+#include "PokemonLZA_AutoStoryBeta.h"
 
 namespace PokemonAutomation{
 namespace NintendoSwitch{
@@ -112,6 +113,20 @@ AutoStoryMultiLang_Descriptor::AutoStoryMultiLang_Descriptor()
         "Play the opening of the story from a new save: create the character, "
         "pick a starter, win the first battle, escape the battle zone, stay at Hotel Z, beat the rival, catch Bunnelby, Scatterbug and Weedle, "
         "leave Wild Zone 1, go to the lab and open Mable's Research (茉蜜姬調查).",
+        PanelQualityStanding::OFFICIAL_BETA,
+        ProgramControllerClass::StandardController_NoRestrictions,
+        FeedbackType::REQUIRED,
+        AllowCommandsWhenRunning::DISABLE_COMMANDS
+    )
+{}
+AutoStoryMultiLang_Descriptor::AutoStoryMultiLang_Descriptor(
+    std::string identifier, std::string display_name, std::string description
+)
+    : SingleSwitchProgramDescriptor(
+        std::move(identifier),
+        STRING_POKEMON + " LZA", std::move(display_name),
+        "",
+        std::move(description),
         PanelQualityStanding::OFFICIAL_BETA,
         ProgramControllerClass::StandardController_NoRestrictions,
         FeedbackType::REQUIRED,
@@ -509,11 +524,17 @@ Milliseconds AutoStoryMultiLang::dialog_quiet(
     SingleSwitchProgramEnvironment& env, const std::string& name, Milliseconds quiet
 ) const{
     const char* source = "default";
-    JsonValue holder;
-    const JsonObject* step = story_dialog_step(env, name, holder);
-    if (step != nullptr){
-        quiet = Milliseconds(step->get_integer_default("quiet", quiet.count()));
-        source = "story_dialog.json";
+    auto override_iter = m_quiet_overrides.find(name);
+    if (override_iter != m_quiet_overrides.end()){
+        quiet = override_iter->second;
+        source = "story_flow.json";
+    }else{
+        JsonValue holder;
+        const JsonObject* step = story_dialog_step(env, name, holder);
+        if (step != nullptr){
+            quiet = Milliseconds(step->get_integer_default("quiet", quiet.count()));
+            source = "story_dialog.json";
+        }
     }
     env.log("Dialog quiet " + name + " (" + source + "): quiet " + std::to_string(quiet.count()) + " ms");
     return quiet;
@@ -3639,6 +3660,402 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     //  Closing the menu starts a short scene. It ends back in the
     //  director's office with the next quest (back to Hotel Z) and a save.
     { const std::string dialog_name = "ZA-13-4 After Mable's Research"; clear_dialogs(env, context, dialog_name, true, dialog_quiet(env, dialog_name, 4000ms)); }
+
+    send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
+    GO_HOME_WHEN_DONE.run_end_of_program(context);
+}
+
+
+//
+//  Auto Story (Beta): the order of the steps comes from story_flow.json.
+//
+namespace{
+
+const char* STORY_FLOW_FILE = "story_flow.json";
+
+//  Start From slugs, in the order of AutoStoryMultiLang::StartPoint. A step
+//  with "start": <slug> is where that choice starts.
+const char* BETA_START_SLUGS[] = {
+    "create-character", "select-character", "train-station", "chase-pancham",
+    "choose-starter", "first-battle", "battle-zone", "escape-zone",
+    "waitress-battle", "escape-zone-2", "escape-zone-3", "walk-into-hotel",
+    "hotel-intro", "hotel-upstairs", "hotel-night", "hotel-morning",
+    "roll-tutorial", "walk-to-urbain", "urbain-battle", "map-tutorial",
+    "rock-scene", "rooftop", "pc", "wild-zone-1",
+    "first-catch", "bunnelby", "after-bunnelby", "scatterbug",
+    "weedle", "leave-wild-zone", "walk-to-lab", "lab-elevator",
+    "lab-mable", "research-menu",
+};
+static_assert(
+    sizeof(BETA_START_SLUGS) / sizeof(BETA_START_SLUGS[0]) ==
+    (size_t)AutoStoryMultiLang::StartPoint::ResearchMenu + 1,
+    "One slug per start point."
+);
+
+//  Used when story_flow.json is missing or not valid.
+const char* DEFAULT_STORY_FLOW =
+    R"JSON({)JSON" "\n"
+    R"JSON(    "flow": [)JSON" "\n"
+    R"JSON(        { "id": "ZA-00 Start the game + language", "action": "start_game", "start": "create-character" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-00 Character look + name", "action": "create_character", "start": "select-character" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-01 Train station", "macro": "ZA-01-車站-追頑皮熊貓-without-restart.json", "expect": "logo_video", "start": "train-station" },)JSON" "\n"
+    R"JSON(        { "id": "Before chasing Pancham", "action": "before_chasing_pancham", "start": "chase-pancham" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-02-0 Chase Pancham", "macro": "ZA-02-0-追頑皮熊貓4-without-restart.json", "expect": "quest_icon" },)JSON" "\n"
+    R"JSON(        { "id": "Before choosing the starter", "action": "before_choosing_starter", "start": "choose-starter" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-02-1 Choose starter", "action": "choose_starter", "expect": "battle_challenge" },)JSON" "\n"
+    R"JSON(        { "id": "First Battle", "action": "trainer_battle", "start": "first-battle" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-03-0 battle zone", "story": { "before": 10, "after": 0, "quiet": 1200 }, "start": "battle-zone" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-03-1 Escape the battle zone 0", "macro": "ZA-03-1-逃出對戰特區0.json", "start": "escape-zone" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-03-1 escape 1", "story": { "before": 10, "after": 10, "quiet": 1200 }, "expect": "battle_challenge" },)JSON" "\n"
+    R"JSON(        { "id": "Waitress Battle", "action": "trainer_battle", "start": "waitress-battle" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-03-3 escape 2", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "escape-zone-2" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-03-3 Escape the battle zone 2-2", "macro": "ZA-03-3-逃出對戰特區2-2.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-03-4 Escape the battle zone 3", "macro": "ZA-03-4-逃出對戰特區3.json", "start": "escape-zone-3" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-04-0 Hotel Z", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "walk-into-hotel" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-04-1 Walk into Hotel Z", "macro": "ZA-04-1-走進Z飯店.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-0 Hotel Z intro", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "hotel-intro" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-1 Talk to AZ 1", "macro": "ZA-05-1-Z飯店-向AZ對話1.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-2 AZ", "story": { "before": 10, "after": 10, "quiet": 1200 } },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-3 Elevator to 2F", "macro": "ZA-05-3-Z飯店-走向電梯門口上2F.json", "start": "hotel-upstairs" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-4 Room 202", "macro": "ZA-05-4-Z飯店-走進202客房.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-5 To the bed", "macro": "ZA-05-5-Z飯店-202房間走向床邊.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-6 To the door", "macro": "ZA-05-6-Z飯店-202房間走向房門.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-7 night", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "hotel-night" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-8 Next morning", "macro": "ZA-05-8-Z飯店-隔天早上起床後出房門到2F電梯門口.json", "start": "hotel-morning" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-9 roll tutorial", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "roll-tutorial" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-10 To the hotel door", "macro": "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-11 Leave the hotel", "macro": "ZA-05-11-Z飯店-出ZA飯店.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-06-1 Walk to the rival", "macro": "ZA-06-1-走向蓋伊對戰.json", "expect": "battle_challenge", "start": "walk-to-urbain" },)JSON" "\n"
+    R"JSON(        { "id": "Rival Battle", "action": "trainer_battle", "start": "urbain-battle" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-07 map tutorial", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "map-tutorial" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-08-1 Walk to the rocks", "macro": "ZA-08-1-往前走觸發岩石劇情.json", "start": "rock-scene" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-08-2 rocks", "story": { "before": 10, "after": 10, "quiet": 1200 } },)JSON" "\n"
+    R"JSON(        { "id": "ZA-09-1 Ladder", "macro": "ZA-09-1-走向大樓梯子與上梯子.json", "start": "rooftop" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-09-2 rooftop", "story": { "before": 10, "after": 10, "quiet": 1200 } },)JSON" "\n"
+    R"JSON(        { "id": "ZA-09-3 Jump down", "macro": "ZA-09-3-跳下大樓.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-10-1 PC scene", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "pc" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-10-2 Walk to the PC", "macro": "ZA-10-2-走向PC.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-10-3 Pokedex tutorial", "story": { "before": 0, "after": 10, "quiet": 2000 } },)JSON" "\n"
+    R"JSON(        { "id": "ZA-11-1 Walk to Wild Zone 1", "macro": "ZA-11-1-走向WildZone1-1.json", "start": "wild-zone-1" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-11-2 Wild Zone 1", "story": { "before": 10, "after": 10, "quiet": 1200 } },)JSON" "\n"
+    R"JSON(        { "id": "ZA-11-3 Into Wild Zone 1", "macro": "ZA-11-3-走向WildZone1-3.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-1 First catch", "macro": "ZA-12-1-捕捉1.json", "start": "first-catch" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-2 Bunnelby battle + catch", "action": "capture_battle", "start": "bunnelby" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-3 after Bunnelby", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "after-bunnelby" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-4 Walk to Scatterbug", "macro": "ZA-12-4-走向粉蝶蟲.json", "start": "scatterbug" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-4 Catch Scatterbug", "action": "catch_scatterbug" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-5 Catch Weedle", "action": "catch_weedle", "start": "weedle" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-6 Leave Wild Zone 1", "action": "leave_wild_zone", "start": "leave-wild-zone" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-13-1 Walk to the lab", "action": "walk_to_lab", "dialog_quiet": { "ZA-13-1 Lab story": 1200, "ZA-13-1 Lab door": 1200, "ZA-13-1 Lab entrance": 1200 }, "start": "walk-to-lab" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-13-2 Lab elevator", "action": "lab_elevator", "dialog_quiet": { "ZA-13-2 Lab 1F": 1200 }, "start": "lab-elevator" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-13-2 3F story", "story": { "before": 0, "after": 0, "quiet": 1200, "press_first": false, "max_wait": 60 } },)JSON" "\n"
+    R"JSON(        { "id": "ZA-13-3 Walk to Mable", "action": "walk_to_mable", "dialog_quiet": { "ZA-13-3 Mable": 1200 }, "start": "lab-mable" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-13-4 Mable's Research", "action": "open_research_list", "start": "research-menu" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-13-4 After Mable's Research", "story": { "before": 0, "after": 0, "quiet": 1200, "press_first": false, "max_wait": 60 } })JSON" "\n"
+    R"JSON(    ])JSON" "\n"
+    R"JSON(})JSON" "\n";
+
+}
+
+
+AutoStoryBeta_Descriptor::AutoStoryBeta_Descriptor()
+    : AutoStoryMultiLang_Descriptor(
+        "PokemonLZA:AutoStoryBeta",
+        "Auto Story (Beta)",
+        "Same as Auto Story, but the order of the steps is read from story_flow.json in the macro folder. "
+        "Each step runs a macro, clears a story dialog, or runs a built-in action."
+    )
+{}
+
+AutoStoryBeta::AutoStoryBeta(){}
+
+
+void AutoStoryBeta::run_flow_action(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::string& action, const std::string& id, const JsonObject& step
+){
+    if (action == "start_game"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Starting the game.");
+        launch_and_pick_language(env, context);
+        return;
+    }
+    if (action == "create_character"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Creating character.");
+        select_character(env, context);
+        //  Confirm the look; the name keyboard comes up.
+        pbf_press_button(context, BUTTON_A, 160ms, 340ms);
+        WallClock keyboard_wait = current_time();
+        bool keyboard = false;
+        while (current_time() - keyboard_wait < std::chrono::seconds(10)){
+            context.wait_for_all_requests();
+            double kx = 0;
+            double ky = 0;
+            if (find_keyboard_cursor(env.console.video().snapshot(), kx, ky)){
+                keyboard = true;
+                break;
+            }
+            context.wait_for(300ms);
+        }
+        if (!keyboard){
+            env.log("No name keyboard yet. Pressing A again.", COLOR_RED);
+            pbf_press_button(context, BUTTON_A, 160ms, 1840ms);
+        }
+        enter_character_name(env, context);
+
+        //  After the name: pick the upper answer of the confirmation, then
+        //  skip the opening video.
+        pbf_wait(context, 1000ms);
+        pbf_press_dpad(context, DPAD_UP, 200ms, 200ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 15000ms);
+        pbf_press_button(context, BUTTON_PLUS, 5000ms, 3000ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 200ms);
+        context.wait_for_all_requests();
+        return;
+    }
+    if (action == "before_chasing_pancham"){
+        //  Not needed when the movement tutorial already showed up.
+        if (!m_movement_tutorial_seen){
+            clear_dialogs(env, context, "Before chasing Pancham", false, 1500ms, false, std::chrono::seconds(20));
+        }
+        return;
+    }
+    if (action == "before_choosing_starter"){
+        clear_dialogs(env, context, "Before choosing the starter", false, 1500ms, false, std::chrono::seconds(20));
+        return;
+    }
+    if (action == "choose_starter"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Choosing starter.");
+        run_macro(env, context, starter_macro_filename());
+        m_hud_expected = true;
+        return;
+    }
+    if (action == "trainer_battle"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, id + ".");
+        run_trainer_battle(env, context, step.get_string_default("name", id.c_str()));
+        return;
+    }
+    if (action == "capture_battle"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Bunnelby battle.");
+        run_capture_battle(env, context);
+        return;
+    }
+    if (action == "catch_scatterbug"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Scatterbug.");
+        catch_wild_pokemon(env, context, "scatterbug", "Scatterbug");
+        return;
+    }
+    if (action == "catch_weedle"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Catching Weedle.");
+        navigate_by_minimap(env, context, "Weedle spot", WEEDLE_SPOT_X, WEEDLE_SPOT_Y, 0.004);
+        catch_wild_pokemon(env, context, "weedle", "Weedle");
+        return;
+    }
+    if (action == "leave_wild_zone"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Leaving Wild Zone 1.");
+        std::pair<double, double> stick = navigate_by_minimap(
+            env, context, "Gate", GATE_SPOT_X, GATE_SPOT_Y, 0.004
+        );
+        const ImageFloatBox PROMPT_BOX(0.25, 0.0, 0.5, 0.85);
+        for (int c = 0; c < 3; c++){
+            context.wait_for_all_requests();
+            ButtonWatcher prompt(COLOR_RED, ButtonType::ButtonA, PROMPT_BOX, &env.console.overlay());
+            if (wait_until(env.console, context, 1000ms, {prompt}) == 0){
+                break;
+            }
+            env.log("No exit prompt yet. Stepping toward the gate.");
+            pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
+        }
+        leave_wild_zone(env, context);
+        return;
+    }
+    if (action == "walk_to_lab"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to the lab.");
+        walk_to_lab(env, context);
+        return;
+    }
+    if (action == "lab_elevator"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Lab elevator.");
+        take_lab_elevator(env, context);
+        return;
+    }
+    if (action == "walk_to_mable"){
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to Mable.");
+        walk_to_mable(env, context);
+        return;
+    }
+    if (action == "open_research_list"){
+        open_research_list(env, context);
+        return;
+    }
+    throw UserSetupError(env.logger(), "story_flow.json: step \"" + id + "\" has an unknown action \"" + action + "\".");
+}
+
+
+void AutoStoryBeta::run_flow_step(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const JsonObject& step, size_t index, size_t count
+){
+    const std::string id = step.get_string_default("id", "(no id)");
+
+    //  "expect": the special endings of a step, as a string or a list.
+    std::vector<std::string> expects;
+    if (const std::string* expect = step.get_string("expect")){
+        expects.emplace_back(*expect);
+    }else if (const JsonArray* list = step.get_array("expect")){
+        for (const JsonValue& item : *list){
+            if (const std::string* text = item.to_string()){
+                expects.emplace_back(*text);
+            }
+        }
+    }
+    bool logo_video = false;
+    bool quest_icon = false;
+    bool battle_challenge = false;
+    for (const std::string& expect : expects){
+        if (expect == "logo_video"){
+            logo_video = true;
+        }else if (expect == "quest_icon"){
+            quest_icon = true;
+        }else if (expect == "battle_challenge"){
+            battle_challenge = true;
+        }else{
+            env.log("story_flow.json: unknown \"expect\": " + expect + " (step " + id + ")", COLOR_RED);
+        }
+    }
+
+    //  "dialog_quiet": quiet times of the dialogs inside an action.
+    m_quiet_overrides.clear();
+    if (const JsonObject* quiet_list = step.get_object("dialog_quiet")){
+        for (const auto& item : *quiet_list){
+            m_quiet_overrides[item.first] = Milliseconds(item.second.to_integer_default(4000));
+        }
+    }
+
+    env.log("Flow step " + std::to_string(index + 1) + "/" + std::to_string(count) + ": " + id, COLOR_BLUE);
+    env.console.overlay().add_log(id);
+
+    m_logo_video_expected = logo_video;
+    m_quest_icon_expected = quest_icon;
+    m_battle_challenge_expected = battle_challenge;
+
+    if (const std::string* macro = step.get_string("macro")){
+        run_macro(env, context, *macro);
+    }else if (const JsonObject* story = step.get_object("story")){
+        Milliseconds before(story->get_integer_default("before", 0));
+        Milliseconds after(story->get_integer_default("after", 0));
+        Milliseconds quiet(story->get_integer_default("quiet", 4000));
+        bool press_first = story->get_boolean_default("press_first", true);
+        std::chrono::seconds max_wait(story->get_integer_default("max_wait", 20));
+        env.log(
+            "Story dialog " + id + " (story_flow.json): before " + std::to_string(before.count()) +
+            " ms, after " + std::to_string(after.count()) +
+            " ms, quiet " + std::to_string(quiet.count()) + " ms"
+        );
+        context.wait_for_all_requests();
+        context.wait_for(before);
+        clear_dialogs(env, context, id, true, quiet, press_first, max_wait);
+        context.wait_for(after);
+    }else if (const std::string* action = step.get_string("action")){
+        run_flow_action(env, context, *action, id, step);
+    }else{
+        throw UserSetupError(env.logger(), "story_flow.json: step \"" + id + "\" has no \"macro\", \"story\" or \"action\".");
+    }
+
+    m_logo_video_expected = false;
+    m_quest_icon_expected = false;
+    m_battle_challenge_expected = false;
+    m_quiet_overrides.clear();
+}
+
+
+void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    assert_16_9_720p_min(env.logger(), env.console);
+
+    const StartPoint start = FULL_GAME ? StartPoint::CreateCharacter : START_POINT.get();
+
+    //  No party bar on the overworld until the starter is picked.
+    m_hud_expected = start > StartPoint::ChooseStarter;
+    m_logo_video_expected = false;
+    m_quest_icon_expected = false;
+    m_movement_tutorial_seen = false;
+    m_battle_challenge_expected = false;
+    m_quiet_overrides.clear();
+    env.log("Macro folder: " + macro_file_path(""));
+
+    //  Load the flow. Without a usable file, use the built-in one.
+    JsonValue json;
+    std::string source = STORY_FLOW_FILE;
+    {
+        bool loaded = false;
+        const std::string path = macro_file_path(STORY_FLOW_FILE);
+        std::string text;
+        if (file_to_string(path, text)){
+            if (text.size() >= 3 &&
+                (uint8_t)text[0] == 0xef &&
+                (uint8_t)text[1] == 0xbb &&
+                (uint8_t)text[2] == 0xbf
+            ){
+                text.erase(0, 3);
+            }
+            try{
+                json = parse_json(text);
+                const JsonObject* root = json.to_object();
+                loaded = root != nullptr && root->get_array("flow") != nullptr;
+                if (!loaded){
+                    env.log("story_flow.json has no \"flow\" list.", COLOR_RED);
+                }
+            }catch (Exception& e){
+                env.log("story_flow.json is not valid JSON: " + e.message(), COLOR_RED);
+            }
+        }else{
+            env.log("story_flow.json not found: " + path, COLOR_RED);
+        }
+        if (!loaded){
+            env.log("Using the built-in story flow.", COLOR_RED);
+            json = parse_json(DEFAULT_STORY_FLOW);
+            source = "built-in flow";
+        }
+    }
+    std::vector<const JsonObject*> steps;
+    for (const JsonValue& item : json.to_object_throw().get_array_throw("flow")){
+        const JsonObject* step = item.to_object();
+        if (step == nullptr){
+            throw UserSetupError(env.logger(), source + ": every step of \"flow\" must be an object.");
+        }
+        steps.emplace_back(step);
+    }
+
+    //  Start From: the first step marked with its slug.
+    const std::string slug = BETA_START_SLUGS[(size_t)start];
+    size_t first = steps.size();
+    for (size_t c = 0; c < steps.size(); c++){
+        if (steps[c]->get_string_default("start") == slug){
+            first = c;
+            break;
+        }
+    }
+    if (first == steps.size()){
+        throw UserSetupError(env.logger(), source + ": no step has \"start\": \"" + slug + "\".");
+    }
+    env.log("Story flow: " + source + ", " + std::to_string(steps.size()) + " steps, starting at step " + std::to_string(first + 1) + ".");
+
+    //  Connect the controller.
+    const bool from_beginning = start <= StartPoint::CreateCharacter;
+    if (START_LOCATION.start_in_grip_menu()){
+        grip_menu_connect_go_home(context);
+        if (!from_beginning){
+            resume_game_from_home(env.console, context);
+        }
+    }else{
+        require_player(env.console, context, BUTTON_NONE);
+        if (from_beginning){
+            go_home(env.console, context);
+        }
+    }
+
+    for (size_t c = first; c < steps.size(); c++){
+        run_flow_step(env, context, *steps[c], c, steps.size());
+    }
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
     GO_HOME_WHEN_DONE.run_end_of_program(context);
