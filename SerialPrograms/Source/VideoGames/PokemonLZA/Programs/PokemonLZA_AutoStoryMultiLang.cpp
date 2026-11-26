@@ -36,6 +36,7 @@
 #include "Kernels/Waterfill/Kernels_Waterfill.h"
 #include "CommonFramework/ImageTools/ImageStats.h"
 #include "CommonFramework/Tools/GlobalThreadPools.h"
+#include "CommonFramework/GlobalAutoPaths.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_CharacterSelectDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_ButtonDetector.h"
 #include "VideoGames/PokemonLZA/Inference/PokemonLZA_DialogDetector.h"
@@ -55,10 +56,11 @@ bool overworld_hud(const ImageViewRGB32& screen);
 
 
 
-//  Macro files (Turbo Macro JSON) expected in MACRO_FOLDER.
+//  Macro files (Turbo Macro JSON) expected in MACRO_FOLDER, or by default
+//  in Resources/PokemonLZA/AutoStory/ of the program folder.
 namespace{
 
-const char* MACRO_FOLDER_DEFAULT    = "F:\\Game\\za_auto_2\\multi-lang";
+const char* MACRO_SUBFOLDER_DEFAULT = "PokemonLZA/AutoStory/";
 
 //  ZA-00 (multi-language): the game start, the language and the name are
 //  done by the program. These two hold the button presses around the name.
@@ -145,7 +147,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     : FULL_GAME(
         "<b>Full Game:</b><br>"
         "Play the whole story from the beginning (ZA-00, starting from Home) with the macros in "
-        "F:\\Game\\za_auto_2\\multi-lang. Uncheck to pick the macro folder and the chapter to start from.",
+        "Resources\\PokemonLZA\\AutoStory of the program folder. Uncheck to pick the macro folder and the chapter to start from.",
         LockMode::LOCK_WHILE_RUNNING,
         false
     )
@@ -153,10 +155,11 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     , MACRO_FOLDER(
         false,
         "<b>Macro Folder:</b><br>"
-        "Folder that contains the ZA-00 / ZA-01 / ZA-02 Turbo Macro JSON files.",
+        "Folder that contains the Turbo Macro JSON files and story_dialog.json. "
+        "Leave empty to use Resources\\PokemonLZA\\AutoStory of the program folder.",
         LockMode::LOCK_WHILE_RUNNING,
-        "F:\\Game\\za_auto_2\\multi-lang",
-        "F:\\Game\\za_auto_2\\multi-lang"
+        "",
+        "(empty: Resources\\PokemonLZA\\AutoStory)"
     )
     , START_POINT(
         "<b>Start From:</b><br>"
@@ -435,7 +438,10 @@ void AutoStoryMultiLang::run_macro(
 
 
 std::string AutoStoryMultiLang::macro_file_path(const std::string& filename) const{
-    std::string path = FULL_GAME ? std::string(MACRO_FOLDER_DEFAULT) : std::string(MACRO_FOLDER);
+    std::string path = FULL_GAME ? std::string() : std::string(MACRO_FOLDER);
+    if (path.empty()){
+        path = RESOURCE_PATH() + MACRO_SUBFOLDER_DEFAULT;
+    }
     if (!path.empty() && path.back() != '/' && path.back() != '\\'){
         path += "/";
     }
@@ -3362,6 +3368,7 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
     m_quest_icon_expected = false;
     m_movement_tutorial_seen = false;
     m_battle_challenge_expected = false;
+    env.log("Macro folder: " + macro_file_path(""));
     const bool from_beginning = start <= StartPoint::CreateCharacter;
 
     //  Connect the controller.
