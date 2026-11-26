@@ -123,9 +123,10 @@ ClaimMysteryGift::ClaimMysteryGift()
     , CODE(
         false,
         "<b>Code / Password:</b><br>"
-        "For Get with Code/Password. Not case sensitive; spaces and dashes are ignored.",
+        "For Get with Code/Password. Several codes: separate them with commas, e.g. "
+        "<i>CODE1, CODE2</i>. Not case sensitive; spaces and dashes are ignored.",
         LockMode::LOCK_WHILE_RUNNING,
-        "", "XXXXXXXXXXXXXXXX"
+        "", "CODE1, CODE2"
     )
     , NOTIFICATION_STATUS_UPDATE("Status Update", true, false, std::chrono::seconds(3600))
     , NOTIFICATIONS({
@@ -555,30 +556,53 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
 }
 
 void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    //  Normalize: upper case, no spaces or dashes. The keyboard has no
-    //  I / O / Z (they read as 1 / 0 / 2).
-    std::string code;
-    for (char ch : std::string(CODE)){
-        if (ch == ' ' || ch == '-' || ch == '\t'){
-            continue;
+    //  Several codes: separated by commas, semicolons or new lines.
+    //  Each: upper case, no spaces or dashes. The keyboard has no I / O / Z
+    //  (they read as 1 / 0 / 2).
+    std::vector<std::string> codes;
+    {
+        std::string code;
+        auto flush = [&](){
+            if (code.empty()){
+                return;
+            }
+            if (code.size() > 16){
+                throw UserSetupError(env.logger(), "Code \"" + code + "\": at most 16 letters / digits.");
+            }
+            codes.push_back(code);
+            code.clear();
+        };
+        for (char ch : std::string(CODE)){
+            if (ch == ',' || ch == ';' || ch == '\n' || ch == '\r'){
+                flush();
+                continue;
+            }
+            if (ch == ' ' || ch == '-' || ch == '\t'){
+                continue;
+            }
+            ch = (char)std::toupper((unsigned char)ch);
+            if (ch == 'I'){ ch = '1'; }
+            if (ch == 'O'){ ch = '0'; }
+            if (ch == 'Z'){ ch = '2'; }
+            int col = 0;
+            int row = 0;
+            if (!code_key_position(ch, col, row)){
+                throw UserSetupError(env.logger(), std::string("Code: \"") + ch + "\" is not on the code keyboard.");
+            }
+            code += ch;
         }
-        ch = (char)std::toupper((unsigned char)ch);
-        if (ch == 'I'){ ch = '1'; }
-        if (ch == 'O'){ ch = '0'; }
-        if (ch == 'Z'){ ch = '2'; }
-        int col = 0;
-        int row = 0;
-        if (!code_key_position(ch, col, row)){
-            throw UserSetupError(env.logger(), std::string("Code: \"") + ch + "\" is not on the code keyboard.");
+        flush();
+    }
+    if (codes.empty()){
+        throw UserSetupError(env.logger(), "Code / Password: write at least one code.");
+    }
+    {
+        std::string all;
+        for (const std::string& code : codes){
+            all += (all.empty() ? "" : ", ") + code;
         }
-        code += ch;
+        env.log("Codes (" + std::to_string(codes.size()) + "): " + all);
     }
-    if (code.empty() || code.size() > 16){
-        throw UserSetupError(env.logger(), "Code: write 1 to 16 letters / digits.");
-    }
-    env.log("Code: " + code);
-
-    pick_menu_option(env, context, 1);
 
     auto read_cursor = [&](int& col, int& row){
         for (int c = 0; c < 10; c++){
@@ -598,7 +622,7 @@ void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProCo
         );
     };
 
-    for (char ch : code){
+    auto type_key = [&](char ch){
         int target_col = 0;
         int target_row = 0;
         code_key_position(ch, target_col, target_row);
@@ -609,14 +633,13 @@ void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProCo
         int last_col = -1;
         int last_row = -1;
         bool try_horizontal = false;
-        bool reached = false;
-        for (int step = 0; step < 40 && !reached; step++){
+        for (int step = 0; step < 40; step++){
             int col = 0;
             int row = 0;
             read_cursor(col, row);
             if (col == target_col && row == target_row){
-                reached = true;
-                break;
+                pbf_press_button(context, BUTTON_A, 80ms, 320ms);
+                return;
             }
             bool stuck = col == last_col && row == last_row;
             last_col = col;
@@ -640,21 +663,93 @@ void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProCo
             pbf_press_dpad(context, right <= left ? DPAD_RIGHT : DPAD_LEFT, 80ms, 220ms);
             try_horizontal = false;
         }
-        if (!reached){
+        OperationFailedExceptionWithScreenshot::fire(
+            ErrorReportMode::NO_ERROR_REPORT,
+            std::string("Unable to move the cursor to \"") + ch + "\".",
+            env.console
+        );
+    };
+
+    int received = 0;
+    std::string failed;
+    for (size_t index = 0; index < codes.size(); index++){
+        const std::string& code = codes[index];
+        const std::string what = "code " + std::to_string(index + 1) + "/" + std::to_string(codes.size()) + " " + code;
+        env.log("Entering " + what + ".", COLOR_BLUE);
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Entering " + what + ".");
+
+        pick_menu_option(env, context, 1);
+        for (char ch : code){
+            type_key(ch);
+        }
+
+        //  確定 (+), then the connection and the gift, back to the Mystery
+        //  Gift menu. A wrong / used code puts the keyboard back up: leave
+        //  it with X and go on with the next code.
+        pbf_press_button(context, BUTTON_PLUS, 100ms, 2000ms);
+        WallClock start = current_time();
+        int menu_seen = 0;
+        int keyboard_seen = 0;
+        bool ok = false;
+        bool rejected = false;
+        while (current_time() - start < std::chrono::seconds(180)){
+            context.wait_for_all_requests();
+            VideoSnapshot snapshot = env.console.video().snapshot();
+            if (mystery_gift_menu_row(snapshot) >= 0){
+                keyboard_seen = 0;
+                if (++menu_seen >= 2){
+                    ok = true;
+                    break;
+                }
+                context.wait_for(700ms);
+                continue;
+            }
+            menu_seen = 0;
+            double x = 0;
+            double y = 0;
+            if (lza_find_keyboard_cursor(snapshot, x, y)){
+                if (++keyboard_seen >= 3){
+                    rejected = true;
+                    break;
+                }
+                context.wait_for(700ms);
+                continue;
+            }
+            keyboard_seen = 0;
+            pbf_press_button(context, BUTTON_A, 100ms, 1400ms);
+        }
+        if (rejected){
+            env.log("Code " + code + " was not accepted (wrong, used or expired). Leaving the keyboard.", COLOR_RED);
+            failed += (failed.empty() ? "" : ", ") + code;
+            for (int c = 0; c < 10; c++){
+                pbf_press_button(context, BUTTON_X, 100ms, 1500ms);
+                context.wait_for_all_requests();
+                if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+                    break;
+                }
+                pbf_press_button(context, BUTTON_B, 100ms, 1500ms);
+                context.wait_for_all_requests();
+                if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+                    break;
+                }
+            }
+            continue;
+        }
+        if (!ok){
             OperationFailedExceptionWithScreenshot::fire(
                 ErrorReportMode::NO_ERROR_REPORT,
-                std::string("Unable to move the cursor to \"") + ch + "\".",
+                "Did not get back from " + what + " within 3 minutes.",
                 env.console
             );
         }
-        pbf_press_button(context, BUTTON_A, 80ms, 320ms);
+        env.log("Received: " + what, COLOR_BLUE);
+        received++;
     }
-
-    //  確定 (+), then the connection and the gift.
-    env.log("Code entered. Confirming.", COLOR_BLUE);
-    send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Code entered: " + code);
-    pbf_press_button(context, BUTTON_PLUS, 100ms, 1000ms);
-    finish_receiving(env, context, false, "code " + code);
+    env.log(
+        "Codes received: " + std::to_string(received) + "/" + std::to_string(codes.size()) +
+        (failed.empty() ? std::string() : ". Not accepted: " + failed),
+        failed.empty() ? COLOR_BLUE : COLOR_RED
+    );
 }
 
 void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
