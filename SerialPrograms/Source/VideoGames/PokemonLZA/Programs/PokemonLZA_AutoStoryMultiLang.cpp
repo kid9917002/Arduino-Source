@@ -1589,9 +1589,21 @@ bool logo_video(const ImageViewRGB32& screen){
 }
 
 //  A full-screen menu (ZA Royale, MAP, POKEDEX, main menu ...) shows a
-//  white "B" button icon at the bottom right to close it.
+//  white "B" button icon at the bottom right to close it. It is the last
+//  button prompt of the row, and where it sits depends on how long the
+//  label after it is (關閉 / 閉じる / 닫는다 / Close ...), so look along the
+//  row from the right.
+bool button_icon_at(const ImageViewRGB32& screen, double box_x);
 bool b_close_screen(const ImageViewRGB32& screen){
-    ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.916, 0.945, 0.022, 0.035));
+    for (double box_x = 0.950; box_x >= 0.860; box_x -= 0.004){
+        if (button_icon_at(screen, box_x)){
+            return true;
+        }
+    }
+    return false;
+}
+bool button_icon_at(const ImageViewRGB32& screen, double box_x){
+    ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(box_x, 0.945, 0.022, 0.035));
     size_t white = 0;
     size_t dark = 0;
     size_t total = 0;
