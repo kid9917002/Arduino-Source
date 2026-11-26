@@ -3,7 +3,7 @@
  *  From: https://github.com/PokemonAutomation/
  *
  *  From the overworld: X menu -> Online Play -> Mystery Gift, then
- *  - Get via Internet: claim every unclaimed gift, or only the rows picked, or
+ *  - Get via Internet: claim every unclaimed gift, or only the gifts picked, or
  *  - Get with Code/Password: type the code on the system keyboard.
  */
 
@@ -11,7 +11,11 @@
 #define PokemonAutomation_PokemonLZA_ClaimMysteryGift_H
 
 #include <vector>
+#include <memory>
 #include "Common/Cpp/Options/StringOption.h"
+#include "Common/Cpp/Options/GroupOption.h"
+#include "Common/Cpp/Options/BooleanCheckBoxOption.h"
+#include "CommonTools/Options/LanguageOCROption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
@@ -57,12 +61,20 @@ private:
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
         bool back_to_list, const std::string& what
     );
-    std::vector<int> selected_rows(SingleSwitchProgramEnvironment& env) const;
+    //  Which gift a row of the Internet list is (index into the gift
+    //  list), from the title read on the selected row. -1: not known.
+    int identify_gift(SingleSwitchProgramEnvironment& env, int row);
+    bool gift_wanted(int gift) const;
 
 private:
     EnumDropdownOption<StartIn> START_IN;
     EnumDropdownOption<Method> METHOD;
-    StringOption GIFT_ROWS;
+    OCR::LanguageOCROption LANGUAGE;
+    GroupOption GIFTS;
+    //  One per gift still being given out (see the gift list in the .cpp).
+    std::vector<std::unique_ptr<BooleanCheckBoxOption>> m_gift_options;
+    std::vector<int> m_gift_option_index;  //  gift index -> m_gift_options, or -1
+    BooleanCheckBoxOption OTHER_GIFTS;
     StringOption CODE;
 
     EventNotificationOption NOTIFICATION_STATUS_UPDATE;
