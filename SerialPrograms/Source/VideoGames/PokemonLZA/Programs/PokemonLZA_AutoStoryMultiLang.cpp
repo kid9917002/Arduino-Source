@@ -65,8 +65,8 @@ const char* MACRO_SUBFOLDER_DEFAULT = "PokemonLZA/AutoStory/";
 
 //  ZA-00 (multi-language): the game start, the language and the name are
 //  done by the program. These two hold the button presses around the name.
-const char* MACRO_STATION           = "ZA-01-車站-追頑皮熊貓-without-restart.json";
-const char* MACRO_CHASE_PANCHAM     = "ZA-02-0-追頑皮熊貓4-without-restart.json";
+const char* MACRO_STATION           = "ZA-01-車站.json";
+const char* MACRO_CHASE_PANCHAM     = "ZA-02-0-追頑皮熊貓.json";
 const char* MACRO_STARTER_CHIKORITA = "ZA-02-1-選擇御三家(菊草葉).json";
 const char* MACRO_STARTER_TEPIG     = "ZA-02-1-選擇御三家(暖暖豬).json";
 const char* MACRO_STARTER_TOTODILE  = "ZA-02-1-選擇御三家(小鋸鱷).json";
@@ -79,7 +79,7 @@ const char* MACRO_HOTEL_ELEVATOR    = "ZA-05-3-Z飯店-走向電梯門口上2F.j
 const char* MACRO_HOTEL_ROOM        = "ZA-05-4-Z飯店-走進202客房.json";
 const char* MACRO_HOTEL_BED         = "ZA-05-5-Z飯店-202房間走向床邊.json";
 const char* MACRO_HOTEL_DOOR        = "ZA-05-6-Z飯店-202房間走向房門.json";
-const char* MACRO_HOTEL_MORNING     = "ZA-05-8-Z飯店-隔天早上起床後出房門到2F電梯門口.json";
+const char* MACRO_HOTEL_MORNING     = "ZA-05-8-Z飯店-隔天早上起床.json";
 const char* MACRO_ROLL_TO_DOOR      = "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json";
 const char* MACRO_LEAVE_HOTEL       = "ZA-05-11-Z飯店-出ZA飯店.json";
 const char* MACRO_WALK_TO_RIVAL     = "ZA-06-1-走向蓋伊對戰.json";
@@ -3698,9 +3698,9 @@ const char* DEFAULT_STORY_FLOW =
     R"JSON(    "flow": [)JSON" "\n"
     R"JSON(        { "id": "ZA-00 Start the game + language", "action": "start_game", "start": "create-character" },)JSON" "\n"
     R"JSON(        { "id": "ZA-00 Character look + name", "action": "create_character", "start": "select-character" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-01 Train station", "macro": "ZA-01-車站-追頑皮熊貓-without-restart.json", "expect": "logo_video", "start": "train-station" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-01 Train station", "macro": "ZA-01-車站.json", "expect": "logo_video", "start": "train-station" },)JSON" "\n"
     R"JSON(        { "id": "Before chasing Pancham", "action": "before_chasing_pancham", "start": "chase-pancham" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-02-0 Chase Pancham", "macro": "ZA-02-0-追頑皮熊貓4-without-restart.json", "expect": "quest_icon" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-02-0 Chase Pancham", "macro": "ZA-02-0-追頑皮熊貓.json", "expect": "quest_icon" },)JSON" "\n"
     R"JSON(        { "id": "Before choosing the starter", "action": "before_choosing_starter", "start": "choose-starter" },)JSON" "\n"
     R"JSON(        { "id": "ZA-02-1 Choose starter", "action": "choose_starter", "expect": "battle_challenge" },)JSON" "\n"
     R"JSON(        { "id": "First Battle", "action": "trainer_battle", "start": "first-battle" },)JSON" "\n"
@@ -3721,7 +3721,7 @@ const char* DEFAULT_STORY_FLOW =
     R"JSON(        { "id": "ZA-05-5 To the bed", "macro": "ZA-05-5-Z飯店-202房間走向床邊.json" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-6 To the door", "macro": "ZA-05-6-Z飯店-202房間走向房門.json" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-7 night", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "hotel-night" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-05-8 Next morning", "macro": "ZA-05-8-Z飯店-隔天早上起床後出房門到2F電梯門口.json", "start": "hotel-morning" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-8 Next morning", "macro": "ZA-05-8-Z飯店-隔天早上起床.json", "start": "hotel-morning" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-9 roll tutorial", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "roll-tutorial" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-10 To the hotel door", "macro": "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-11 Leave the hotel", "macro": "ZA-05-11-Z飯店-出ZA飯店.json" },)JSON" "\n"
