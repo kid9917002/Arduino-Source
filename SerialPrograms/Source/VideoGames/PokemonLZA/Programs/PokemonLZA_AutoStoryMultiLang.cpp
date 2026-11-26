@@ -674,6 +674,10 @@ void AutoStoryMultiLang::select_character(SingleSwitchProgramEnvironment& env, P
 
 
 
+namespace{
+const char* dialog_kind(const ImageViewRGB32& screen);
+}
+
 void AutoStoryMultiLang::run_trainer_battle(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
     const std::string& name
@@ -692,6 +696,7 @@ void AutoStoryMultiLang::run_trainer_battle(
     WallClock start = current_time();
     WallClock last_attack = start;
     bool seen_battle = false;
+    std::string last_pre_battle_kind;
 
     while (true){
         context.wait_for_all_requests();
@@ -704,6 +709,23 @@ void AutoStoryMultiLang::run_trainer_battle(
                 "run_trainer_battle(): " + name + " did not finish within 5 minutes.",
                 env.console
             );
+        }
+
+        //  Before the battle: story dialogs can still be up (the battle may
+        //  have been handed over early, e.g. when the battle-text detector
+        //  fires on a story dialog). Advance them at dialog speed instead of
+        //  holding ZL first. The battle text itself goes the usual way.
+        if (!seen_battle){
+            const char* kind = dialog_kind(env.console.video().snapshot());
+            if (kind != nullptr && std::string(kind) != "TransparentBattleDialog"){
+                if (last_pre_battle_kind != kind){
+                    env.log(std::string("Pre-battle dialog (") + kind + "). Pressing A.");
+                    last_pre_battle_kind = kind;
+                }
+                pbf_press_button(context, BUTTON_A, 100ms, 200ms);
+                continue;
+            }
+            last_pre_battle_kind.clear();
         }
 
         if (battle_state.attempt_one_attack(env, env.console, context)){
