@@ -101,7 +101,9 @@ ClaimMysteryGift_Descriptor::ClaimMysteryGift_Descriptor()
 
 ClaimMysteryGift::ClaimMysteryGift()
     : START_IN(
-        "<b>Start In:</b>",
+        "<b>Start In:</b><br>"
+        "Where the game is (with Start in Grip Menu: where it was left before going to the Grip Menu). "
+        "The game must be running.",
         {
             {StartIn::Overworld,        "overworld",    "Overworld (all menus closed)"},
             {StartIn::MysteryGiftMenu,  "mystery-gift", "Mystery Gift menu (Get via Internet / Get with Code)"},
@@ -206,6 +208,7 @@ ClaimMysteryGift::ClaimMysteryGift()
     }
     GIFTS.add_option(OTHER_GIFTS, "other");
 
+    PA_ADD_OPTION(START_LOCATION);
     PA_ADD_OPTION(START_IN);
     PA_ADD_OPTION(METHOD);
     PA_ADD_OPTION(GIFTS);
@@ -669,8 +672,16 @@ void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProCo
 void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
-    //  Connect the controller without pressing anything.
-    require_player(env.console, context, BUTTON_NONE);
+    //  Connect the controller.
+    if (START_LOCATION.start_in_grip_menu()){
+        //  Grip Menu -> Home -> back into the running game.
+        grip_menu_connect_go_home(context);
+        resume_game_from_home(env.console, context);
+        context.wait_for_all_requests();
+        context.wait_for(1000ms);
+    }else{
+        require_player(env.console, context, BUTTON_NONE);
+    }
 
     if (START_IN == StartIn::Overworld){
         open_mystery_gift_menu(env, context);

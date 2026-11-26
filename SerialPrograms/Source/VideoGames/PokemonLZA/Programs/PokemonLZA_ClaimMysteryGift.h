@@ -17,6 +17,7 @@
 #include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
+#include "NintendoSwitch/Options/NintendoSwitch_StartInGripMenuOption.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
 
 namespace PokemonAutomation{
@@ -72,6 +73,7 @@ private:
     };
     std::vector<InternetGift> m_gifts;
 
+    StartInGripOrGameOption START_LOCATION;
     EnumDropdownOption<StartIn> START_IN;
     EnumDropdownOption<Method> METHOD;
     GroupOption GIFTS;
