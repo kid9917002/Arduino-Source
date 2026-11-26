@@ -196,8 +196,8 @@ AutoStoryMultiLang::AutoStoryMultiLang()
             {StartPoint::HotelUpstairs,   "hotel-upstairs",   "ZA-05-3 Elevator to 2F / room 202"},
             {StartPoint::HotelNight,      "hotel-night",      "ZA-05-7 Night scene"},
             {StartPoint::HotelMorning,    "hotel-morning",    "ZA-05-8 Next morning"},
-            {StartPoint::RollTutorial,    "roll-tutorial",    "ZA-05-9 Roll tutorial / leave hotel"},
-            {StartPoint::WalkToRival,     "walk-to-urbain",   "ZA-06-1 Walk to the rival (Urbain / Taunie)"},
+            {StartPoint::RollTutorial,    "roll-tutorial",    "ZA-05-9 Roll tutorial"},
+            {StartPoint::LeaveHotel,      "leave-hotel",      "ZA-05-10 Leave Hotel Z / walk to the rival (after the roll tutorial save)"},
             {StartPoint::RivalBattle,     "urbain-battle",    "ZA-06-2 Rival (Urbain / Taunie) battle (pre-battle screen)"},
             {StartPoint::MapTutorial,     "map-tutorial",     "ZA-07 Map tutorial (after the rival battle)"},
             {StartPoint::RockScene,       "rock-scene",       "ZA-08 Rocks scene"},
@@ -3587,12 +3587,13 @@ void AutoStoryMultiLang::program(SingleSwitchProgramEnvironment& env, ProControl
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Roll tutorial.");
         //  Roll tutorial: dialogs, the ZA Royale screen (closed with B), dialogs.
         story_dialog(env, context, "ZA-05-9 roll tutorial", 100ms, 400ms);
-        run_macro(env, context, MACRO_ROLL_TO_DOOR);
-        run_macro(env, context, MACRO_LEAVE_HOTEL);
     }
 
+    //  The game saves after the roll tutorial. Leave the hotel, then
     //  ZA-06: the rival (Urbain or Taunie, by the player's look).
-    if (start <= StartPoint::WalkToRival){
+    if (start <= StartPoint::LeaveHotel){
+        run_macro(env, context, MACRO_ROLL_TO_DOOR);
+        run_macro(env, context, MACRO_LEAVE_HOTEL);
         m_battle_challenge_expected = true;
         run_macro(env, context, MACRO_WALK_TO_RIVAL);
         m_battle_challenge_expected = false;
@@ -3725,7 +3726,7 @@ const char* BETA_START_SLUGS[] = {
     "choose-starter", "first-battle", "battle-zone", "escape-zone",
     "waitress-battle", "escape-zone-2", "escape-zone-3", "walk-into-hotel",
     "hotel-intro", "hotel-upstairs", "hotel-night", "hotel-morning",
-    "roll-tutorial", "walk-to-urbain", "urbain-battle", "map-tutorial",
+    "roll-tutorial", "leave-hotel", "urbain-battle", "map-tutorial",
     "rock-scene", "rooftop", "pc", "wild-zone-1",
     "first-catch", "bunnelby", "after-bunnelby", "scatterbug",
     "weedle", "leave-wild-zone", "walk-to-lab", "lab-elevator",
@@ -3768,9 +3769,9 @@ const char* DEFAULT_STORY_FLOW =
     R"JSON(        { "id": "ZA-05-7 night", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "hotel-night" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-8 Next morning", "macro": "ZA-05-8-Z飯店-隔天早上起床.json", "start": "hotel-morning" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-9 roll tutorial", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "roll-tutorial" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-05-10 To the hotel door", "macro": "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-05-10 To the hotel door", "macro": "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json", "start": "leave-hotel" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-11 Leave the hotel", "macro": "ZA-05-11-Z飯店-出ZA飯店.json" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-06-1 Walk to the rival", "macro": "ZA-06-1-走向蓋伊對戰.json", "expect": "battle_challenge", "start": "walk-to-urbain" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-06-1 Walk to the rival", "macro": "ZA-06-1-走向蓋伊對戰.json", "expect": "battle_challenge" },)JSON" "\n"
     R"JSON(        { "id": "Rival Battle", "action": "trainer_battle", "start": "urbain-battle" },)JSON" "\n"
     R"JSON(        { "id": "ZA-07 map tutorial", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "map-tutorial" },)JSON" "\n"
     R"JSON(        { "id": "ZA-08-1 Walk to the rocks", "macro": "ZA-08-1-往前走觸發岩石劇情.json", "start": "rock-scene" },)JSON" "\n"

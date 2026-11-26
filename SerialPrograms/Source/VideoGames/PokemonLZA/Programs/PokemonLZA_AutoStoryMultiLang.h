@@ -99,8 +99,8 @@ public:
         HotelUpstairs,      //  ZA-05-3 .. ZA-05-6
         HotelNight,         //  ZA-05-7
         HotelMorning,       //  ZA-05-8
-        RollTutorial,       //  ZA-05-9 .. ZA-05-11
-        WalkToRival,        //  ZA-06-1
+        RollTutorial,       //  ZA-05-9 (the game saves after it)
+        LeaveHotel,         //  ZA-05-10 .. ZA-06-1
         RivalBattle,        //  on the pre-battle screen (ZA-06-2-蓋伊戰鬥前)
         MapTutorial,        //  ZA-07, on the dialog after the rival battle
         RockScene,          //  ZA-08
