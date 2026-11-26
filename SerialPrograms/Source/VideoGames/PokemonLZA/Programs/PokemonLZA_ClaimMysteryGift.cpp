@@ -12,6 +12,11 @@
 #include "Common/Cpp/Exceptions.h"
 #include "CommonFramework/Exceptions/OperationFailedExceptionWithScreenshot.h"
 #include "CommonFramework/ImageTools/ImageBoxes.h"
+#include "CommonFramework/GlobalAutoPaths.h"
+#include "Common/Cpp/Json/JsonValue.h"
+#include "Common/Cpp/Json/JsonArray.h"
+#include "Common/Cpp/Json/JsonObject.h"
+#include "Common/Cpp/Filesystem/FileIO.h"
 #include "CommonFramework/Notifications/ProgramNotifications.h"
 #include "CommonFramework/VideoPipeline/VideoFeed.h"
 #include "CommonTools/StartupChecks/VideoResolutionCheck.h"
@@ -32,45 +37,36 @@ bool lza_find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y
 
 namespace{
 
-//  Gifts of "Get via Internet", in the order the game lists them (new
-//  distributions are added at the end). The game only lists the ones being
-//  given out now, so the row of a gift is its place among the gifts here
-//  that are not over yet.
-struct InternetGift{
-    const char* slug;
-    const char* label;
-    long long end_utc;  //  end as YYYYMMDDhhmm (UTC), 0: no end date
-};
-const std::vector<InternetGift>& INTERNET_GIFTS(){
-    static const std::vector<InternetGift> gifts{
-        {
-            "diancie",
-            "Diancite + Side Mission \"Shine Bright Like a Gemstone\" (光芒耀眼如寶石 / 宝石のような輝きを)",
-            0,
-        },
-        {
-            "project-m",
-            "Mewtwonite X & Y + Side Mission \"Project M\" (專案代號：M / プロジェクトコード：M)",
-            0,
-        },
-        {
-            "hyperspace-rift",
-            "Special Hyperspace Rift (偵測到了特殊的異次元扭洞！ / 特別な異次元のひずみを検知！)",
-            0,
-        },
-        {
-            "spewpa",
-            "Spewpa (粉蝶蛹 禮物) - until 2026-11-19",
-            202611190159,
-        },
-        {
-            "vivillon-poke-ball",
-            "Poké Ball Pattern Vivillon (球球花紋的彩粉蝶 / ボールのもようの ビビヨン) - until 2027-02-26",
-            202702260159,
-        },
-    };
-    return gifts;
+const char* GIFT_LIST_FILE = "PokemonLZA/MysteryGift/internet_gifts.json";
+
+//  Used when the json file is missing or not valid.
+const char* DEFAULT_GIFT_LIST = R"JSON({
+    "gifts": [
+        { "id": "diancie", "name": "Diancite + Side Mission \"Shine Bright Like a Gemstone\"", "end_utc": "" },
+        { "id": "project-m", "name": "Mewtwonite X & Y + Side Mission \"Project M\"", "end_utc": "" },
+        { "id": "hyperspace-rift", "name": "Special Hyperspace Rift", "end_utc": "" },
+        { "id": "spewpa", "name": "Spewpa", "end_utc": "2026-11-19 01:59" },
+        { "id": "vivillon-poke-ball", "name": "Poke Ball Pattern Vivillon", "end_utc": "2027-02-26 01:59" }
+    ]
+})JSON";
+
+//  "2027-02-26 01:59" -> 202702260159. Empty: 0.
+long long parse_end_utc(const std::string& text){
+    std::string digits;
+    for (char ch : text){
+        if (ch >= '0' && ch <= '9'){
+            digits += ch;
+        }
+    }
+    if (digits.empty()){
+        return 0;
+    }
+    while (digits.size() < 12){
+        digits += digits.size() < 10 ? "0" : "9";
+    }
+    return std::atoll(digits.substr(0, 12).c_str());
 }
+
 long long now_utc_yyyymmddhhmm(){
     std::time_t now = std::time(nullptr);
     std::tm utc{};
@@ -147,16 +143,66 @@ ClaimMysteryGift::ClaimMysteryGift()
         &NOTIFICATION_ERROR_FATAL,
     })
 {
+    //  The gift list: the json file in Resources, or the built-in one.
+    {
+        std::string text;
+        bool loaded = false;
+        if (file_to_string(RESOURCE_PATH() + GIFT_LIST_FILE, text)){
+            if (text.size() >= 3 && (uint8_t)text[0] == 0xef && (uint8_t)text[1] == 0xbb && (uint8_t)text[2] == 0xbf){
+                text.erase(0, 3);
+            }
+            try{
+                JsonValue json = parse_json(text);
+                const JsonObject* root = json.to_object();
+                const JsonArray* list = root == nullptr ? nullptr : root->get_array("gifts");
+                if (list != nullptr){
+                    for (const JsonValue& item : *list){
+                        const JsonObject* gift = item.to_object();
+                        if (gift == nullptr){
+                            continue;
+                        }
+                        m_gifts.push_back({
+                            gift->get_string_default("id"),
+                            gift->get_string_default("name"),
+                            parse_end_utc(gift->get_string_default("end_utc")),
+                        });
+                    }
+                    loaded = true;
+                }
+            }catch (Exception&){
+                m_gifts.clear();
+            }
+        }
+        if (!loaded){
+            m_gifts.clear();
+            JsonValue json = parse_json(DEFAULT_GIFT_LIST);
+            for (const JsonValue& item : json.to_object_throw().get_array_throw("gifts")){
+                const JsonObject& gift = item.to_object_throw();
+                m_gifts.push_back({
+                    gift.get_string_default("id"),
+                    gift.get_string_default("name"),
+                    parse_end_utc(gift.get_string_default("end_utc")),
+                });
+            }
+        }
+    }
+
     //  A checkbox for each gift that is not over yet.
     const long long now = now_utc_yyyymmddhhmm();
-    for (const InternetGift& gift : INTERNET_GIFTS()){
+    for (const InternetGift& gift : m_gifts){
         if (gift.end_utc != 0 && now > gift.end_utc){
             m_gift_option_index.push_back(-1);
             continue;
         }
+        std::string label = gift.name;
+        if (gift.end_utc != 0){
+            std::string end = std::to_string(gift.end_utc);
+            label += " (until " + end.substr(0, 4) + "-" + end.substr(4, 2) + "-" + end.substr(6, 2) +
+                " " + end.substr(8, 2) + ":" + end.substr(10, 2) + " UTC)";
+        }
         m_gift_option_index.push_back((int)m_gift_options.size());
-        m_gift_options.emplace_back(new BooleanCheckBoxOption(gift.label, LockMode::LOCK_WHILE_RUNNING, true));
-        GIFTS.add_option(*m_gift_options.back(), gift.slug);
+        m_gift_options.emplace_back(new BooleanCheckBoxOption(label, LockMode::LOCK_WHILE_RUNNING, true));
+        GIFTS.add_option(*m_gift_options.back(), gift.id);
     }
     GIFTS.add_option(OTHER_GIFTS, "other");
 
@@ -440,7 +486,7 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
     std::vector<int> active;
     {
         const long long now = now_utc_yyyymmddhhmm();
-        const std::vector<InternetGift>& gifts = INTERNET_GIFTS();
+        const std::vector<InternetGift>& gifts = m_gifts;
         for (size_t c = 0; c < gifts.size(); c++){
             if (gifts[c].end_utc == 0 || now <= gifts[c].end_utc){
                 active.push_back((int)c);
@@ -493,7 +539,7 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
     for (int row = 0; row < rows; row++){
         int gift = row < (int)active.size() ? active[(size_t)row] : -1;
         const std::string what = gift >= 0
-            ? std::string(INTERNET_GIFTS()[(size_t)gift].slug)
+            ? m_gifts[(size_t)gift].id
             : "gift row " + std::to_string(row + 1);
 
         context.wait_for_all_requests();

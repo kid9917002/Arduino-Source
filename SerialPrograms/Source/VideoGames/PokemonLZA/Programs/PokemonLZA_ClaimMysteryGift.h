@@ -63,6 +63,15 @@ private:
     bool gift_wanted(int gift) const;
 
 private:
+    //  Gifts of "Get via Internet", in list order, from
+    //  Resources/PokemonLZA/MysteryGift/internet_gifts.json.
+    struct InternetGift{
+        std::string id;
+        std::string name;
+        long long end_utc;  //  YYYYMMDDhhmm (UTC), 0: no end date
+    };
+    std::vector<InternetGift> m_gifts;
+
     EnumDropdownOption<StartIn> START_IN;
     EnumDropdownOption<Method> METHOD;
     GroupOption GIFTS;
