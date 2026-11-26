@@ -3370,10 +3370,21 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
         }
     }
 
-    //  確定 (+).
+    //  確定 (+). On the Korean (system) keyboard the first + only finishes
+    //  the syllable being composed and the keyboard stays open, so press it
+    //  again while the keyboard cursor is still there.
     env.log("Name entered. Confirming.", COLOR_BLUE);
-    pbf_press_button(context, BUTTON_PLUS, 100ms, 900ms);
-    context.wait_for_all_requests();
+    for (int attempt = 0; attempt < 3; attempt++){
+        pbf_press_button(context, BUTTON_PLUS, 100ms, 900ms);
+        context.wait_for_all_requests();
+        context.wait_for(600ms);
+        double cursor_x = 0;
+        double cursor_y = 0;
+        if (!find_keyboard_cursor(env.console.video().snapshot(), cursor_x, cursor_y)){
+            return;
+        }
+        env.log("The keyboard is still open. Pressing + again.", COLOR_RED);
+    }
 }
 
 
