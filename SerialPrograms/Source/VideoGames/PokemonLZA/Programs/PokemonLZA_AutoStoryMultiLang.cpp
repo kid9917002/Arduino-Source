@@ -2054,16 +2054,28 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
                 env.log("Blocked. Stepping sideways (" + std::to_string(stuck) + ").", COLOR_RED);
                 pbf_move_left_joystick(context, {side, 0.3}, 500ms, 200ms);
             }
+            //  Far from the marker outdoors: run (B once while moving
+            //  forward). Close to it, walk so the prompt is not overshot.
+            const bool run = outdoors && state.distance >= 12;
             double walk_ms = 400;
             if (state.distance > 0){
-                walk_ms = std::max(400.0, std::min(state.distance * 80.0, 1500.0));
+                walk_ms = run
+                    ? std::max(400.0, std::min(state.distance * 45.0, 1500.0))
+                    : std::max(400.0, std::min(state.distance * 80.0, 1500.0));
             }
             env.log(
                 name + ": marker at x = " + std::to_string(cx) +
                 ", distance " + (state.distance >= 0 ? std::to_string(state.distance) + " m" : std::string("?")) +
-                ", walk " + std::to_string((int)walk_ms) + " ms"
+                (run ? ", run " : ", walk ") + std::to_string((int)walk_ms) + " ms"
             );
-            pbf_move_left_joystick(context, {0, 1}, Milliseconds((int64_t)walk_ms), 200ms);
+            if (run){
+                pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {0, 1}, {0, 0}, 150ms);
+                pbf_controller_state(context, BUTTON_B, DPAD_NONE, {0, 1}, {0, 0}, 80ms);
+                pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {0, 1}, {0, 0}, Milliseconds((int64_t)walk_ms));
+                pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {0, 0}, {0, 0}, 200ms);
+            }else{
+                pbf_move_left_joystick(context, {0, 1}, Milliseconds((int64_t)walk_ms), 200ms);
+            }
             stick_x = 0;
             stick_y = 1;
 
