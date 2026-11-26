@@ -14,7 +14,6 @@
 #include "CommonFramework/ImageTools/ImageBoxes.h"
 #include "CommonFramework/Notifications/ProgramNotifications.h"
 #include "CommonFramework/VideoPipeline/VideoFeed.h"
-#include "CommonTools/OCR/OCR_Routines.h"
 #include "CommonTools/StartupChecks/VideoResolutionCheck.h"
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_PushButtons.h"
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
@@ -33,14 +32,14 @@ bool lza_find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y
 
 namespace{
 
-//  Gifts of "Get via Internet". The game only lists the ones being given
-//  out now; the end date only hides a gift here once it is over.
-//  A row is told apart by words of its title (any game language).
+//  Gifts of "Get via Internet", in the order the game lists them (new
+//  distributions are added at the end). The game only lists the ones being
+//  given out now, so the row of a gift is its place among the gifts here
+//  that are not over yet.
 struct InternetGift{
     const char* slug;
     const char* label;
-    int end_date;   //  last day (UTC+8) as YYYYMMDD, 0: no end date
-    std::vector<std::string> keywords;
+    long long end_utc;  //  end as YYYYMMDDhhmm (UTC), 0: no end date
 };
 const std::vector<InternetGift>& INTERNET_GIFTS(){
     static const std::vector<InternetGift> gifts{
@@ -48,44 +47,43 @@ const std::vector<InternetGift>& INTERNET_GIFTS(){
             "diancie",
             "Diancite + Side Mission \"Shine Bright Like a Gemstone\" (光芒耀眼如寶石 / 宝石のような輝きを)",
             0,
-            {"寶石", "宝石", "Gemstone", "gemstone", "보석"},
         },
         {
             "project-m",
             "Mewtwonite X & Y + Side Mission \"Project M\" (專案代號：M / プロジェクトコード：M)",
             0,
-            {"專案", "代號", "プロジェクト", "Project", "PROJECT", "프로젝트"},
         },
         {
             "hyperspace-rift",
             "Special Hyperspace Rift (偵測到了特殊的異次元扭洞！ / 特別な異次元のひずみを検知！)",
             0,
-            {"異次元", "扭洞", "ひずみ", "Hyperspace", "hyperspace", "이차원"},
         },
         {
             "spewpa",
             "Spewpa (粉蝶蛹 禮物) - until 2026-11-19",
-            20261119,
-            {"粉蝶蛹", "コフーライ", "Spewpa"},
+            202611190159,
         },
         {
             "vivillon-poke-ball",
             "Poké Ball Pattern Vivillon (球球花紋的彩粉蝶 / ボールのもようの ビビヨン) - until 2027-02-26",
-            20270226,
-            {"彩粉蝶", "ビビヨン", "Vivillon", "비비용"},
+            202702260159,
         },
     };
     return gifts;
 }
-int today_yyyymmdd(){
+long long now_utc_yyyymmddhhmm(){
     std::time_t now = std::time(nullptr);
-    std::tm local{};
+    std::tm utc{};
 #ifdef _WIN32
-    localtime_s(&local, &now);
+    gmtime_s(&utc, &now);
 #else
-    localtime_r(&now, &local);
+    gmtime_r(&now, &utc);
 #endif
-    return (local.tm_year + 1900) * 10000 + (local.tm_mon + 1) * 100 + local.tm_mday;
+    return (long long)(utc.tm_year + 1900) * 100000000LL
+         + (long long)(utc.tm_mon + 1) * 1000000LL
+         + (long long)utc.tm_mday * 10000LL
+         + (long long)utc.tm_hour * 100LL
+         + (long long)utc.tm_min;
 }
 
 }
@@ -126,22 +124,12 @@ ClaimMysteryGift::ClaimMysteryGift()
         LockMode::LOCK_WHILE_RUNNING,
         Method::InternetAll
     )
-    , LANGUAGE(
-        "<b>Game Language:</b><br>Used to read the gift titles (only for \"claim only the gifts checked below\").",
-        {
-            Language::English, Language::Japanese,
-            Language::ChineseTraditional, Language::ChineseSimplified, Language::Korean,
-            Language::French, Language::German, Language::Italian, Language::Spanish,
-        },
-        LockMode::LOCK_WHILE_RUNNING,
-        false
-    )
     , GIFTS(
         "Gifts to claim (Get via Internet: claim only the gifts checked below)",
         LockMode::LOCK_WHILE_RUNNING
     )
     , OTHER_GIFTS(
-        "<b>Other gifts:</b><br>Also claim gifts that are not in the list above (new distributions).",
+        "<b>Other gifts:</b><br>Also claim the gifts below the ones above (new distributions).",
         LockMode::LOCK_WHILE_RUNNING,
         false
     )
@@ -160,9 +148,9 @@ ClaimMysteryGift::ClaimMysteryGift()
     })
 {
     //  A checkbox for each gift that is not over yet.
-    const int today = today_yyyymmdd();
+    const long long now = now_utc_yyyymmddhhmm();
     for (const InternetGift& gift : INTERNET_GIFTS()){
-        if (gift.end_date != 0 && today > gift.end_date){
+        if (gift.end_utc != 0 && now > gift.end_utc){
             m_gift_option_index.push_back(-1);
             continue;
         }
@@ -174,7 +162,6 @@ ClaimMysteryGift::ClaimMysteryGift()
 
     PA_ADD_OPTION(START_IN);
     PA_ADD_OPTION(METHOD);
-    PA_ADD_OPTION(LANGUAGE);
     PA_ADD_OPTION(GIFTS);
     PA_ADD_OPTION(CODE);
     PA_ADD_OPTION(NOTIFICATIONS);
@@ -438,29 +425,6 @@ void ClaimMysteryGift::finish_receiving(
     );
 }
 
-int ClaimMysteryGift::identify_gift(SingleSwitchProgramEnvironment& env, int row){
-    VideoSnapshot snapshot = env.console.video().snapshot();
-    double top = gift_row_top(row);
-    std::string text = OCR::ocr_read((Language)LANGUAGE, extract_box_reference(snapshot, ImageFloatBox(0.305, top + 0.008, 0.400, 0.052)));
-    std::string compact;
-    for (char ch : text){
-        if (ch != ' ' && ch != '\n' && ch != '\r' && ch != '\t'){
-            compact += ch;
-        }
-    }
-    const std::vector<InternetGift>& gifts = INTERNET_GIFTS();
-    for (size_t c = 0; c < gifts.size(); c++){
-        for (const std::string& keyword : gifts[c].keywords){
-            if (compact.find(keyword) != std::string::npos){
-                env.log("Row " + std::to_string(row + 1) + ": \"" + compact + "\" -> " + gifts[c].slug);
-                return (int)c;
-            }
-        }
-    }
-    env.log("Row " + std::to_string(row + 1) + ": \"" + compact + "\" -> not in the gift list", COLOR_ORANGE);
-    return -1;
-}
-
 bool ClaimMysteryGift::gift_wanted(int gift) const{
     if (gift < 0){
         return OTHER_GIFTS;
@@ -471,10 +435,39 @@ bool ClaimMysteryGift::gift_wanted(int gift) const{
 
 void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     const bool pick = METHOD == Method::InternetSelected;
-    if (pick && (Language)LANGUAGE == Language::None){
-        throw UserSetupError(env.logger(), "Pick the Game Language to read the gift titles.");
+
+    //  The gifts being given out now, in list order: row -> gift.
+    std::vector<int> active;
+    {
+        const long long now = now_utc_yyyymmddhhmm();
+        const std::vector<InternetGift>& gifts = INTERNET_GIFTS();
+        for (size_t c = 0; c < gifts.size(); c++){
+            if (gifts[c].end_utc == 0 || now <= gifts[c].end_utc){
+                active.push_back((int)c);
+            }
+        }
     }
+
     pick_menu_option(env, context, 0);
+
+    context.wait_for_all_requests();
+    context.wait_for(500ms);
+    int rows = 0;
+    {
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        while (rows < GIFT_ROW_COUNT && gift_row_filled(snapshot, rows)){
+            rows++;
+        }
+    }
+    env.log("Gift list: " + std::to_string(rows) + " rows, " + std::to_string(active.size()) + " known gifts given out now.");
+    if (pick && rows < (int)active.size()){
+        OperationFailedExceptionWithScreenshot::fire(
+            ErrorReportMode::NO_ERROR_REPORT,
+            "The gift list has fewer rows (" + std::to_string(rows) + ") than the known gifts (" +
+            std::to_string(active.size()) + "): the program's gift list is out of date.",
+            env.console
+        );
+    }
 
     auto move_to_row = [&](int target){
         for (int c = 0; c < 20; c++){
@@ -497,33 +490,25 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
     };
 
     int claimed = 0;
-    for (int row = 0; row < GIFT_ROW_COUNT; row++){
-        context.wait_for_all_requests();
-        context.wait_for(500ms);
-        VideoSnapshot snapshot = env.console.video().snapshot();
-        if (!gift_row_filled(snapshot, row)){
-            break;
-        }
-        bool unclaimed = gift_row_unclaimed(snapshot, row);
-
-        //  Read the title on the selected (white) row.
-        move_to_row(row);
-        context.wait_for(300ms);
-        int gift = (Language)LANGUAGE != Language::None ? identify_gift(env, row) : -1;
+    for (int row = 0; row < rows; row++){
+        int gift = row < (int)active.size() ? active[(size_t)row] : -1;
         const std::string what = gift >= 0
             ? std::string(INTERNET_GIFTS()[(size_t)gift].slug)
             : "gift row " + std::to_string(row + 1);
 
-        if (!unclaimed){
-            env.log(what + ": already claimed.");
+        context.wait_for_all_requests();
+        context.wait_for(300ms);
+        if (!gift_row_unclaimed(env.console.video().snapshot(), row)){
+            env.log("Row " + std::to_string(row + 1) + " (" + what + "): already claimed.");
             continue;
         }
         if (pick && !gift_wanted(gift)){
-            env.log(what + ": not checked. Skipping.");
+            env.log("Row " + std::to_string(row + 1) + " (" + what + "): not checked. Skipping.");
             continue;
         }
 
-        env.log("Claiming " + what + ".", COLOR_BLUE);
+        move_to_row(row);
+        env.log("Claiming row " + std::to_string(row + 1) + " (" + what + ").", COLOR_BLUE);
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Claiming " + what + ".");
         pbf_press_button(context, BUTTON_A, 100ms, 500ms);
         finish_receiving(env, context, true, what);

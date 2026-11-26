@@ -15,7 +15,6 @@
 #include "Common/Cpp/Options/StringOption.h"
 #include "Common/Cpp/Options/GroupOption.h"
 #include "Common/Cpp/Options/BooleanCheckBoxOption.h"
-#include "CommonTools/Options/LanguageOCROption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
@@ -61,15 +60,11 @@ private:
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
         bool back_to_list, const std::string& what
     );
-    //  Which gift a row of the Internet list is (index into the gift
-    //  list), from the title read on the selected row. -1: not known.
-    int identify_gift(SingleSwitchProgramEnvironment& env, int row);
     bool gift_wanted(int gift) const;
 
 private:
     EnumDropdownOption<StartIn> START_IN;
     EnumDropdownOption<Method> METHOD;
-    OCR::LanguageOCROption LANGUAGE;
     GroupOption GIFTS;
     //  One per gift still being given out (see the gift list in the .cpp).
     std::vector<std::unique_ptr<BooleanCheckBoxOption>> m_gift_options;
