@@ -350,6 +350,19 @@ int gift_list_selected_row(const ImageViewRGB32& screen){
     }
     return -1;
 }
+//  The "Choose the gift to receive." message box under the gift list. It
+//  takes A before the list moves at all, so it is closed first (A only
+//  while it is up: an A on the list itself would claim the selected row).
+//  Dark navy box from x = 0.224 to 0.776, y = 0.774 to 0.956; without it
+//  that band is bright cyan. User's screenshots: 0.94 with it, 0.17
+//  without.
+bool gift_list_message_open(const ImageViewRGB32& screen){
+    auto navy = [](int r, int g, int b){
+        return r < 50 && g < 60 && b >= 60 && b <= 110 && b - r >= 35;
+    };
+    return pixel_ratio(screen, ImageFloatBox(0.26, 0.80, 0.48, 0.13), navy) >= 0.70 &&
+        pixel_ratio(screen, ImageFloatBox(0.20, 0.85, 0.015, 0.08), navy) < 0.20;
+}
 bool gift_row_filled(const ImageViewRGB32& screen, int row){
     double top = gift_row_top(row);
     ImageFloatBox box(0.300, top + 0.012, 0.350, 0.042);
@@ -607,11 +620,29 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         );
     }
 
-    //  This list moves with the left stick only (the d-pad does nothing:
-    //  checked by the user 2026-11-27). If a push does not move the cursor,
-    //  switch between the stick and the d-pad, and log which one works.
-    bool use_stick = true;
+    //  Close the message box under the list (A, only while it is up).
+    auto close_list_message = [&](){
+        for (int c = 0; c < 10; c++){
+            context.wait_for_all_requests();
+            if (!gift_list_message_open(env.console.video().snapshot())){
+                return;
+            }
+            env.log("Gift list: closing the message box (A).");
+            pbf_press_button(context, BUTTON_A, 100ms, 500ms);
+        }
+        OperationFailedExceptionWithScreenshot::fire(
+            ErrorReportMode::NO_ERROR_REPORT,
+            "Unable to close the message box under the gift list.",
+            env.console
+        );
+    };
+
+    //  The d-pad moves the list once the message box is closed (2026-11-27:
+    //  20 x down with the box up did nothing). If a press does not move the
+    //  cursor, switch between the d-pad and the left stick, and log it.
+    bool use_stick = false;
     auto move_to_row = [&](int target){
+        close_list_message();
         int last_row = -1;
         for (int c = 0; c < 20; c++){
             context.wait_for_all_requests();
