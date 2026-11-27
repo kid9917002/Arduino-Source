@@ -62,6 +62,21 @@ public:
 };
 
 
+//  Macro folder: shows the default folder (Resources/PokemonLZA/AutoStory/)
+//  instead of an empty box. A setting saved empty by an older build loads
+//  back as the default.
+class MacroFolderOption : public StringOption{
+public:
+    using StringOption::StringOption;
+    virtual void load_json(const JsonValue& json) override{
+        StringOption::load_json(json);
+        if (std::string(*this).empty()){
+            set(default_value());
+        }
+    }
+};
+
+
 class AutoStoryMultiLang : public SingleSwitchProgramInstance, public ConfigOption::Listener{
 public:
     using Descriptor = AutoStoryMultiLang_Descriptor;
@@ -281,7 +296,7 @@ protected:
 protected:
     BooleanCheckBoxOption FULL_GAME;
     GroupOption CHAPTER;
-    StringOption MACRO_FOLDER;
+    MacroFolderOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
     StartInGripOrGameOption START_LOCATION;
     SimpleIntegerOption<uint8_t> PROFILE;

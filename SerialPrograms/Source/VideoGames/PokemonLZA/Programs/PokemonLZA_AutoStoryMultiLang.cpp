@@ -170,11 +170,11 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     , MACRO_FOLDER(
         false,
         "<b>Macro Folder:</b><br>"
-        "Folder that contains the Turbo Macro JSON files and story_dialog.json. "
-        "Leave empty to use Resources\\PokemonLZA\\AutoStory of the program folder.",
+        "Folder that contains the Turbo Macro JSON files, story_dialog.json and story_flow.json. "
+        "Default: Resources\\PokemonLZA\\AutoStory of the program folder.",
         LockMode::LOCK_WHILE_RUNNING,
-        "",
-        "(empty: Resources\\PokemonLZA\\AutoStory)"
+        RESOURCE_PATH() + MACRO_SUBFOLDER_DEFAULT,
+        RESOURCE_PATH() + MACRO_SUBFOLDER_DEFAULT
     )
     , START_POINT(
         "<b>Start From:</b><br>"
