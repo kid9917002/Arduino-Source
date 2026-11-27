@@ -317,7 +317,9 @@ int mystery_gift_menu_row(const ImageViewRGB32& screen){
     const double ROW_Y[3] = {0.370, 0.500, 0.630};
     for (int c = 0; c < 3; c++){
         double y = ROW_Y[c];
-        if (white_ratio(screen, ImageFloatBox(0.213, y - 0.025, 0.020, 0.050)) >= 0.80 &&
+        //  Right part of the row only: the left end has the green arrow and
+        //  the icon, and the text length depends on the language.
+        if (white_ratio(screen, ImageFloatBox(0.745, y - 0.025, 0.020, 0.050)) >= 0.80 &&
             white_ratio(screen, ImageFloatBox(0.772, y - 0.025, 0.015, 0.050)) >= 0.80
         ){
             return c;
