@@ -363,6 +363,15 @@ bool gift_list_message_open(const ImageViewRGB32& screen){
     return pixel_ratio(screen, ImageFloatBox(0.26, 0.80, 0.48, 0.13), navy) >= 0.70 &&
         pixel_ratio(screen, ImageFloatBox(0.20, 0.85, 0.015, 0.08), navy) < 0.20;
 }
+//  The green arrow left of the selected row: shown only while the list
+//  takes input (not while the message box is up). x = 0.283 to 0.305.
+//  User's screenshots: 0.48 with it, 0.00 without.
+bool gift_list_arrow(const ImageViewRGB32& screen, int row){
+    double top = gift_row_top(row);
+    return pixel_ratio(screen, ImageFloatBox(0.284, top + 0.010, 0.016, 0.045), [](int r, int g, int b){
+        return g >= 180 && r >= 120 && b <= 110 && g - b >= 90;
+    }) >= 0.20;
+}
 bool gift_row_filled(const ImageViewRGB32& screen, int row){
     double top = gift_row_top(row);
     ImageFloatBox box(0.300, top + 0.012, 0.350, 0.042);
@@ -620,15 +629,24 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         );
     }
 
-    //  Close the message box under the list (A, only while it is up).
+    //  Close the message box under the list. The list takes input once the
+    //  green arrow is next to the selected row. A only when there is no
+    //  arrow and the message box is up: an A with the arrow showing would
+    //  claim the selected row.
     auto close_list_message = [&](){
-        for (int c = 0; c < 10; c++){
+        for (int c = 0; c < 30; c++){
             context.wait_for_all_requests();
-            if (!gift_list_message_open(env.console.video().snapshot())){
+            VideoSnapshot snapshot = env.console.video().snapshot();
+            int row = gift_list_selected_row(snapshot);
+            if (row >= 0 && gift_list_arrow(snapshot, row)){
                 return;
             }
-            env.log("Gift list: closing the message box (A).");
-            pbf_press_button(context, BUTTON_A, 100ms, 500ms);
+            if (gift_list_message_open(snapshot)){
+                env.log("Gift list: closing the message box (A).");
+                pbf_press_button(context, BUTTON_A, 100ms, 400ms);
+            }else{
+                context.wait_for(200ms);
+            }
         }
         OperationFailedExceptionWithScreenshot::fire(
             ErrorReportMode::NO_ERROR_REPORT,
