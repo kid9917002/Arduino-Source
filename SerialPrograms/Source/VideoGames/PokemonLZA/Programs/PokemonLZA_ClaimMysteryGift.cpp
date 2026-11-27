@@ -432,7 +432,8 @@ void ClaimMysteryGift::open_mystery_gift_menu(SingleSwitchProgramEnvironment& en
         overworld_to_main_menu(env.console, context);
         //  Up: from the first item to the last one (Online Play).
         pbf_press_dpad(context, DPAD_UP, 100ms, 300ms);
-        pbf_press_button(context, BUTTON_A, 100ms, 3000ms);
+        //  Online Play opens its menu right away (no connection yet).
+        pbf_press_button(context, BUTTON_A, 100ms, 900ms);
         //  Online Play: left, down -> Mystery Gift.
         pbf_press_dpad(context, DPAD_LEFT, 100ms, 300ms);
         pbf_press_dpad(context, DPAD_DOWN, 100ms, 300ms);
