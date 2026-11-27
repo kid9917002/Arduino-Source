@@ -48,19 +48,21 @@ const char* GIFT_LIST_FILE = "PokemonLZA/MysteryGift/internet_gifts.json";
 //  Used when the json file is missing or not valid.
 //  titles: the gift's title on the Get via Internet list, per game language
 //  (OCR language codes: eng, jpn, chi_sim, chi_tra, kor, fra, deu, ita,
-//  spa), to find the checked gifts on the list.
+//  spa), to find the checked gifts on the list. Several per language are
+//  fine. chi_sim is from the user's screenshot; the others are not checked
+//  on the game screen yet (2026-11-27).
 const char* DEFAULT_GIFT_LIST = R"JSON({
     "gifts": [
         { "id": "diancie", "name": "Diancite + Side Mission \"Shine Bright Like a Gemstone\"", "end_utc": "",
-          "titles": {"eng": ["Shine Bright like a Gemstone"], "chi_sim": ["\u5982\u5b9d\u77f3\u822c\u7684\u5149\u8292"], "chi_tra": ["\u5149\u8292\u8000\u773c\u5982\u5bf6\u77f3", "\u5982\u5bf6\u77f3\u822c\u7684\u5149\u8292"]} },
+          "titles": {"eng": ["Shine Bright like a Gemstone"], "chi_sim": ["\u5982\u5b9d\u77f3\u822c\u7684\u5149\u8292"], "chi_tra": ["\u5149\u8292\u8000\u773c\u5982\u5bf6\u77f3", "\u5982\u5bf6\u77f3\u822c\u7684\u5149\u8292", "\u5982\u5bf6\u77f3\u822c\u7684\u5149\u8f1d"], "jpn": ["\u5b9d\u77f3\u306e\u3088\u3046\u306a\u8f1d\u304d\u3092"], "kor": ["\ubcf4\uc11d\uacfc \uac19\uc740 \ubc18\uc9dd\uc784\uc744"], "fra": ["Briller comme un joyau"], "deu": ["Strahlen wie ein Edelstein"], "spa": ["Brillar como una gema"], "ita": ["Brillare come una gemma"]} },
         { "id": "project-m", "name": "Mewtwonite X & Y + Side Mission \"Project M\"", "end_utc": "",
-          "titles": {"eng": ["Project M"], "chi_sim": ["M\u9879\u76ee"], "chi_tra": ["\u5c08\u6848\u4ee3\u865f\uff1aM", "M\u9805\u76ee"]} },
+          "titles": {"eng": ["Project M"], "chi_sim": ["M\u9879\u76ee"], "chi_tra": ["\u5c08\u6848\u4ee3\u865f\uff1aM", "M\u9805\u76ee", "\u8a08\u756b\uff2d"], "jpn": ["\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u30b3\u30fc\u30c9\uff1a\uff2d", "\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u30b3\u30fc\u30c9:M"], "kor": ["\ud504\ub85c\uc81d\ud2b8 \ucf54\ub4dc: M"], "fra": ["Projet M"], "deu": ["Projekt M"], "spa": ["Proyecto M"], "ita": ["Progetto M"]} },
         { "id": "hyperspace-rift", "name": "Special Hyperspace Rift", "end_utc": "",
-          "titles": {"eng": ["Special Hyperspace Rift"], "chi_sim": ["\u68c0\u6d4b\u5230\u7279\u6b8a\u7684\u5f02\u6b21\u5143\u626d\u6d1e\uff01"], "chi_tra": ["\u5075\u6e2c\u5230\u4e86\u7279\u6b8a\u7684\u7570\u6b21\u5143\u626d\u6d1e\uff01"]} },
+          "titles": {"eng": ["Special Hyperspace Rift", "Special distortion detected!"], "chi_sim": ["\u68c0\u6d4b\u5230\u7279\u6b8a\u7684\u5f02\u6b21\u5143\u626d\u6d1e\uff01"], "chi_tra": ["\u5075\u6e2c\u5230\u4e86\u7279\u6b8a\u7684\u7570\u6b21\u5143\u626d\u6d1e\uff01", "\u5075\u6e2c\u5230\u7279\u6b8a\u7684\u7570\u6b21\u5143\u626d\u6d1e\uff01", "\u5075\u6e2c\u5230\u7279\u6b8a\u626d\u6d1e\uff01"], "jpn": ["\u7279\u5225\u306a\u3072\u305a\u307f\u3092\u691c\u77e5\uff01"], "kor": ["\ud2b9\ubcc4\ud55c \uc77c\uadf8\ub7ec\uc9d0\uc744 \uac10\uc9c0!"], "fra": ["Faille sp\u00e9ciale d\u00e9tect\u00e9e !"], "deu": ["Besondere Verzerrung entdeckt!"], "spa": ["\u00a1Distorsi\u00f3n especial detectada!"], "ita": ["Rilevata distorsione speciale!"]} },
         { "id": "spewpa", "name": "Spewpa", "end_utc": "2026-11-19 01:59",
           "titles": {"eng": ["Spewpa"], "chi_sim": ["\u7c89\u8776\u86f9"], "chi_tra": ["\u7c89\u8776\u86f9"]} },
         { "id": "vivillon-poke-ball", "name": "Poke Ball Pattern Vivillon", "end_utc": "2027-02-26 01:59",
-          "titles": {"eng": ["Pok\u00e9 Ball Pattern Vivillon", "Vivillon (Pok\u00e9 Ball Pattern)"], "chi_sim": ["\u7403\u7403\u82b1\u7eb9\u7684\u5f69\u7c89\u8776"], "chi_tra": ["\u7403\u7403\u82b1\u7d0b\u7684\u5f69\u7c89\u8776"]} }
+          "titles": {"eng": ["Pok\u00e9 Ball Pattern Vivillon", "Vivillon (Pok\u00e9 Ball Pattern)", "Vivillon (Pok\u00e9 Ball Pattern) Gift"], "chi_sim": ["\u7403\u7403\u82b1\u7eb9\u7684\u5f69\u7c89\u8776"], "chi_tra": ["\u7403\u7403\u82b1\u7d0b\u7684\u5f69\u7c89\u8776"], "jpn": ["\u30dc\u30fc\u30eb\u3082\u3088\u3046\u306e \u30d3\u30d3\u30e8\u30f3", "\u30dc\u30fc\u30eb\u3082\u3088\u3046\u306e\u30d3\u30d3\u30e8\u30f3"], "kor": ["\ubcfc\ubaa8\uc591 \ube44\ube44\uc6a9 \uc120\ubb3c", "\ubcfc\ubaa8\uc591 \ube44\ube44\uc6a9"], "fra": ["Cadeau Prismillon (Motif Pok\u00e9 Ball)", "Prismillon (Motif Pok\u00e9 Ball)"], "deu": ["Geschenk: Vivillon (Pok\u00e9ball-Muster)", "Vivillon (Pok\u00e9ball-Muster)"], "spa": ["Regalo: Vivillon (Motivo Pok\u00e9 Ball)", "Vivillon (Motivo Pok\u00e9 Ball)"], "ita": ["Dono Vivillon (Motivo Pok\u00e9 Ball)", "Vivillon (Motivo Pok\u00e9 Ball)"]} }
     ]
 })JSON";
 
@@ -634,9 +636,10 @@ void ClaimMysteryGift::finish_receiving(
     while (current_time() - start < std::chrono::seconds(180)){
         context.wait_for_all_requests();
         VideoSnapshot snapshot = env.console.video().snapshot();
-        bool back = back_to_list
-            ? gift_list_selected_row(snapshot) >= 0
-            : mystery_gift_menu_row(snapshot) >= 0;
+        //  Internet: back on the list, or on the Mystery Gift menu when that
+        //  was the last gift (the game says there is no gift and leaves).
+        bool back = mystery_gift_menu_row(snapshot) >= 0 ||
+            (back_to_list && gift_list_selected_row(snapshot) >= 0);
         if (back){
             if (++seen >= 2){
                 env.log("Received: " + what, COLOR_BLUE);
@@ -783,6 +786,10 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
     int claimed = 0;
     int row = 0;
     for (int guard = 0; guard < 4 * GIFT_ROW_COUNT; guard++){
+        if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+            env.log("Gift list: no gift left (back on the Mystery Gift menu).");
+            break;
+        }
         if (row >= count_rows()){
             break;
         }
