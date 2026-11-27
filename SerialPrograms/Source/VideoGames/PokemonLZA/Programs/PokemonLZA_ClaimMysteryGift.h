@@ -12,7 +12,7 @@
 
 #include <vector>
 #include <memory>
-#include "Common/Cpp/Options/StringOption.h"
+#include "Common/Cpp/Options/TextEditOption.h"
 #include "Common/Cpp/Options/GroupOption.h"
 #include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
@@ -76,7 +76,7 @@ private:
     std::vector<std::unique_ptr<BooleanCheckBoxOption>> m_gift_options;
     std::vector<int> m_gift_option_index;  //  gift index -> m_gift_options, or -1
     BooleanCheckBoxOption OTHER_GIFTS;
-    StringOption CODE;
+    TextEditOption CODE;
 
     EventNotificationOption NOTIFICATION_STATUS_UPDATE;
     EventNotificationsOption NOTIFICATIONS;

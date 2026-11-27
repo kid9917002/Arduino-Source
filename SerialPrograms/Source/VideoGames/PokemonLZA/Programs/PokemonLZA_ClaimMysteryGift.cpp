@@ -121,12 +121,11 @@ ClaimMysteryGift::ClaimMysteryGift()
         false
     )
     , CODE(
-        false,
         "<b>Code / Password:</b><br>"
-        "For Get with Code/Password. Several codes: separate them with commas, e.g. "
-        "<i>CODE1, CODE2</i>. Not case sensitive; spaces and dashes are ignored.",
+        "For Get with Code/Password. One code per line. "
+        "Not case sensitive; spaces and dashes are ignored.",
         LockMode::LOCK_WHILE_RUNNING,
-        "", "CODE1, CODE2"
+        "", "CODE1\nCODE2"
     )
     , NOTIFICATION_STATUS_UPDATE("Status Update", true, false, std::chrono::seconds(3600))
     , NOTIFICATIONS({
@@ -556,7 +555,7 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
 }
 
 void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    //  Several codes: separated by commas, semicolons or new lines.
+    //  Several codes: one per line (commas and semicolons also work).
     //  Each: upper case, no spaces or dashes. The keyboard has no I / O / Z
     //  (they read as 1 / 0 / 2).
     std::vector<std::string> codes;
