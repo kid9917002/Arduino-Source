@@ -372,6 +372,16 @@ bool gift_list_arrow(const ImageViewRGB32& screen, int row){
         return g >= 180 && r >= 120 && b <= 110 && g - b >= 90;
     }) >= 0.20;
 }
+//  B on the gift list asks "Stop receiving?" with Yes / No at the right
+//  (Yes selected by default: white, green arrow left of it). True while
+//  Yes is selected. User's screenshot: white 1.00 / arrow 0.51 with it,
+//  0.00 / 0.00 on the other screens.
+bool quit_receiving_yes_selected(const ImageViewRGB32& screen){
+    return white_ratio(screen, ImageFloatBox(0.780, 0.610, 0.100, 0.050)) >= 0.80 &&
+        pixel_ratio(screen, ImageFloatBox(0.730, 0.615, 0.015, 0.040), [](int r, int g, int b){
+            return g >= 180 && r >= 120 && b <= 110 && g - b >= 90;
+        }) >= 0.20;
+}
 bool gift_row_filled(const ImageViewRGB32& screen, int row){
     double top = gift_row_top(row);
     ImageFloatBox box(0.300, top + 0.012, 0.350, 0.042);
@@ -927,12 +937,29 @@ void ClaimMysteryGift::claim_via_code(
 }
 
 void ClaimMysteryGift::back_to_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    for (int c = 0; c < 10; c++){
-        if (wait_for_mystery_gift_menu(env, context, c == 0 ? 0ms : 1500ms)){
+    //  B on the list asks "Stop receiving?" (Yes / No): A on Yes. Then the
+    //  Mystery Gift menu.
+    WallClock start = current_time();
+    WallClock last_press = start - std::chrono::seconds(10);
+    while (current_time() - start < std::chrono::seconds(30)){
+        context.wait_for_all_requests();
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        if (mystery_gift_menu_row(snapshot) >= 0){
             env.log("Back on the Mystery Gift menu.", COLOR_BLUE);
             return;
         }
-        pbf_press_button(context, BUTTON_B, 100ms, 100ms);
+        if (quit_receiving_yes_selected(snapshot)){
+            env.log("Stop receiving? -> Yes (A).");
+            pbf_press_button(context, BUTTON_A, 100ms, 100ms);
+            last_press = current_time();
+            context.wait_for(400ms);
+            continue;
+        }
+        if (current_time() - last_press >= std::chrono::milliseconds(1500)){
+            pbf_press_button(context, BUTTON_B, 100ms, 100ms);
+            last_press = current_time();
+        }
+        context.wait_for(200ms);
     }
     OperationFailedExceptionWithScreenshot::fire(
         ErrorReportMode::NO_ERROR_REPORT,
