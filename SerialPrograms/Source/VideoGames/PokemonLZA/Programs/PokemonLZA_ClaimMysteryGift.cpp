@@ -590,7 +590,12 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         );
     }
 
+    //  The d-pad did not move this list on the user's console (2026-11-27:
+    //  20 x down, still on row 1). When a press does not move the cursor,
+    //  switch between the d-pad and the left stick, and log which one works.
+    bool use_stick = false;
     auto move_to_row = [&](int target){
+        int last_row = -1;
         for (int c = 0; c < 20; c++){
             context.wait_for_all_requests();
             int row = gift_list_selected_row(env.console.video().snapshot());
@@ -601,7 +606,23 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
                 context.wait_for(300ms);
                 continue;
             }
-            pbf_press_dpad(context, row < target ? DPAD_DOWN : DPAD_UP, 100ms, 400ms);
+            if (row == last_row){
+                use_stick = !use_stick;
+                env.log(
+                    std::string("Gift list: the cursor did not move. Trying the ") +
+                    (use_stick ? "left stick." : "d-pad."),
+                    COLOR_RED
+                );
+            }else if (last_row >= 0){
+                env.log(std::string("Gift list: the ") + (use_stick ? "left stick" : "d-pad") + " moves the cursor.");
+            }
+            last_row = row;
+            const bool down = row < target;
+            if (use_stick){
+                pbf_move_left_joystick(context, {0, down ? -1.0 : +1.0}, 150ms, 400ms);
+            }else{
+                pbf_press_dpad(context, down ? DPAD_DOWN : DPAD_UP, 150ms, 400ms);
+            }
         }
         OperationFailedExceptionWithScreenshot::fire(
             ErrorReportMode::NO_ERROR_REPORT,
