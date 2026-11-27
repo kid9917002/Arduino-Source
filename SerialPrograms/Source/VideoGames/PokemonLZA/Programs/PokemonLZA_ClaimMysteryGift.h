@@ -14,6 +14,7 @@
 #include <atomic>
 #include <memory>
 #include "Common/Cpp/Options/TextEditOption.h"
+#include "Common/Cpp/Options/SimpleIntegerOption.h"
 #include "Common/Cpp/Options/GroupOption.h"
 #include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
@@ -79,6 +80,9 @@ private:
     std::vector<InternetGift> m_gifts;
 
     StartInGripOrGameOption START_LOCATION;
+    //  0: use the game already running. 1-8: restart the game with that
+    //  Switch user profile (position from the left).
+    SimpleIntegerOption<uint8_t> PROFILE;
     //  Get via Internet (can be turned off), with the gifts to claim.
     GroupOption GIFTS;
     BooleanCheckBoxOption SELECT_ALL;

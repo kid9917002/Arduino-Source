@@ -19,9 +19,13 @@
 #include "Common/Cpp/Filesystem/FileIO.h"
 #include "CommonFramework/Notifications/ProgramNotifications.h"
 #include "CommonFramework/VideoPipeline/VideoFeed.h"
+#include "CommonFramework/VideoPipeline/VideoOverlay.h"
 #include "CommonTools/StartupChecks/VideoResolutionCheck.h"
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_PushButtons.h"
+#include "NintendoSwitch/NintendoSwitch_Settings.h"
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
+#include "VideoGames/PokemonLZA/PokemonLZA_Settings.h"
+#include "PokemonLZA_GameEntry.h"
 #include "Pokemon/Pokemon_Strings.h"
 #include "PokemonLZA_ClaimMysteryGift.h"
 
@@ -100,7 +104,15 @@ ClaimMysteryGift_Descriptor::ClaimMysteryGift_Descriptor()
 
 
 ClaimMysteryGift::ClaimMysteryGift()
-    : GIFTS(
+    : PROFILE(
+        "<b>User Profile Position:</b><br>"
+        "The position, from left to right, of the Switch user profile to claim the gifts with. "
+        "The game is closed and started again with that profile.<br>"
+        "0: don't restart, use the game that is already running (and its profile).",
+        LockMode::LOCK_WHILE_RUNNING,
+        0, 0, 8 // default, min, max
+    )
+    , GIFTS(
         "Get via Internet",
         LockMode::LOCK_WHILE_RUNNING,
         GroupOption::EnableMode::DEFAULT_ENABLED
@@ -201,6 +213,7 @@ ClaimMysteryGift::ClaimMysteryGift()
     GIFTS.add_option(OTHER_GIFTS, "other");
 
     PA_ADD_OPTION(START_LOCATION);
+    PA_ADD_OPTION(PROFILE);
     CODE_GROUP.add_option(CODE, "code");
 
     PA_ADD_OPTION(GIFTS);
@@ -840,7 +853,35 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
     }
 
     //  Connect the controller.
-    if (START_LOCATION.start_in_grip_menu()){
+    if (PROFILE != 0){
+        //  Home -> close the game -> start it with the chosen profile.
+        if (START_LOCATION.start_in_grip_menu()){
+            grip_menu_connect_go_home(context);
+        }else{
+            go_home(env.console, context);
+        }
+        env.log("Starting the game with user profile " + std::to_string((int)PROFILE) + ".", COLOR_BLUE);
+        env.console.overlay().add_log("Start game: profile " + std::to_string((int)PROFILE));
+        close_game_from_home(env.console, context);
+        start_game_from_home(
+            env.console, context,
+            ConsoleSettings::instance().TOLERATE_SYSTEM_UPDATE_MENU_FAST,
+            0, PROFILE
+        );
+        bool ok = openedgame_to_gamemenu(env.console, context, GameSettings::instance().START_GAME_WAIT);
+        ok = ok && gamemenu_to_ingame(env.console, context, GameSettings::instance().ENTER_GAME_WAIT0);
+        if (!ok){
+            OperationFailedExceptionWithScreenshot::fire(
+                ErrorReportMode::NO_ERROR_REPORT,
+                "Unable to start the game with user profile " + std::to_string((int)PROFILE) + ".",
+                env.console
+            );
+        }
+        env.log("In the game.", COLOR_BLUE);
+        context.wait_for_all_requests();
+        context.wait_for(1000ms);
+        require_player(env.console, context, BUTTON_NONE);
+    }else if (START_LOCATION.start_in_grip_menu()){
         //  Grip Menu -> Home -> back into the running game.
         grip_menu_connect_go_home(context);
         resume_game_from_home(env.console, context);
