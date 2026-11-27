@@ -10,6 +10,7 @@
 #ifndef PokemonAutomation_PokemonLZA_ClaimMysteryGift_H
 #define PokemonAutomation_PokemonLZA_ClaimMysteryGift_H
 
+#include <map>
 #include <vector>
 #include <atomic>
 #include <memory>
@@ -18,6 +19,8 @@
 #include "Common/Cpp/Options/GroupOption.h"
 #include "Common/Cpp/Options/BooleanCheckBoxOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
+#include "CommonTools/Options/LanguageOCROption.h"
+#include "CommonTools/OCR/OCR_SmallDictionaryMatcher.h"
 #include "NintendoSwitch/Options/NintendoSwitch_StartInGripMenuOption.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
 
@@ -62,6 +65,9 @@ private:
         bool back_to_list, const std::string& what
     );
     bool gift_wanted(int gift) const;
+    //  OCR the title of the selected row: index in m_gifts, or -1 if it is
+    //  none of them (a new gift) or cannot be read.
+    int read_selected_gift(SingleSwitchProgramEnvironment& env, const ImageViewRGB32& screen, int row) const;
 
     //  "Select all" checks / unchecks every gift; it shows checked only
     //  while every gift is checked.
@@ -76,8 +82,12 @@ private:
         std::string id;
         std::string name;
         long long end_utc;  //  YYYYMMDDhhmm (UTC), 0: no end date
+        //  Title on the list per OCR language code ("chi_sim", ...).
+        std::map<std::string, std::vector<std::string>> titles;
     };
     std::vector<InternetGift> m_gifts;
+    //  Reads the titles above (slug = gift id). Null if there are none.
+    std::unique_ptr<OCR::SmallDictionaryMatcher> m_title_reader;
 
     StartInGripOrGameOption START_LOCATION;
     //  Switch user profile to start the game with (position from the left,
@@ -85,6 +95,8 @@ private:
     SimpleIntegerOption<uint8_t> PROFILE;
     //  Get via Internet (can be turned off), with the gifts to claim.
     GroupOption GIFTS;
+    //  To read the gift titles (needed unless every gift is checked).
+    OCR::LanguageOCROption LANGUAGE;
     BooleanCheckBoxOption SELECT_ALL;
     std::atomic<bool> m_syncing_select_all;
     //  One per gift still being given out (see the gift list in the .cpp).

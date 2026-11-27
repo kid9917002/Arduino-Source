@@ -21,6 +21,7 @@
 #include "CommonFramework/VideoPipeline/VideoFeed.h"
 #include "CommonFramework/VideoPipeline/VideoOverlay.h"
 #include "CommonTools/StartupChecks/VideoResolutionCheck.h"
+#include "CommonTools/OCR/OCR_Routines.h"
 #include "NintendoSwitch/Commands/NintendoSwitch_Commands_PushButtons.h"
 #include "NintendoSwitch/NintendoSwitch_Settings.h"
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
@@ -45,15 +46,44 @@ namespace{
 const char* GIFT_LIST_FILE = "PokemonLZA/MysteryGift/internet_gifts.json";
 
 //  Used when the json file is missing or not valid.
+//  titles: the gift's title on the Get via Internet list, per game language
+//  (OCR language codes: eng, jpn, chi_sim, chi_tra, kor, fra, deu, ita,
+//  spa), to find the checked gifts on the list.
 const char* DEFAULT_GIFT_LIST = R"JSON({
     "gifts": [
-        { "id": "diancie", "name": "Diancite + Side Mission \"Shine Bright Like a Gemstone\"", "end_utc": "" },
-        { "id": "project-m", "name": "Mewtwonite X & Y + Side Mission \"Project M\"", "end_utc": "" },
-        { "id": "hyperspace-rift", "name": "Special Hyperspace Rift", "end_utc": "" },
-        { "id": "spewpa", "name": "Spewpa", "end_utc": "2026-11-19 01:59" },
-        { "id": "vivillon-poke-ball", "name": "Poke Ball Pattern Vivillon", "end_utc": "2027-02-26 01:59" }
+        { "id": "diancie", "name": "Diancite + Side Mission \"Shine Bright Like a Gemstone\"", "end_utc": "",
+          "titles": {"eng": ["Shine Bright like a Gemstone"], "chi_sim": ["\u5982\u5b9d\u77f3\u822c\u7684\u5149\u8292"], "chi_tra": ["\u5149\u8292\u8000\u773c\u5982\u5bf6\u77f3", "\u5982\u5bf6\u77f3\u822c\u7684\u5149\u8292"]} },
+        { "id": "project-m", "name": "Mewtwonite X & Y + Side Mission \"Project M\"", "end_utc": "",
+          "titles": {"eng": ["Project M"], "chi_sim": ["M\u9879\u76ee"], "chi_tra": ["\u5c08\u6848\u4ee3\u865f\uff1aM", "M\u9805\u76ee"]} },
+        { "id": "hyperspace-rift", "name": "Special Hyperspace Rift", "end_utc": "",
+          "titles": {"eng": ["Special Hyperspace Rift"], "chi_sim": ["\u68c0\u6d4b\u5230\u7279\u6b8a\u7684\u5f02\u6b21\u5143\u626d\u6d1e\uff01"], "chi_tra": ["\u5075\u6e2c\u5230\u4e86\u7279\u6b8a\u7684\u7570\u6b21\u5143\u626d\u6d1e\uff01"]} },
+        { "id": "spewpa", "name": "Spewpa", "end_utc": "2026-11-19 01:59",
+          "titles": {"eng": ["Spewpa"], "chi_sim": ["\u7c89\u8776\u86f9"], "chi_tra": ["\u7c89\u8776\u86f9"]} },
+        { "id": "vivillon-poke-ball", "name": "Poke Ball Pattern Vivillon", "end_utc": "2027-02-26 01:59",
+          "titles": {"eng": ["Pok\u00e9 Ball Pattern Vivillon", "Vivillon (Pok\u00e9 Ball Pattern)"], "chi_sim": ["\u7403\u7403\u82b1\u7eb9\u7684\u5f69\u7c89\u8776"], "chi_tra": ["\u7403\u7403\u82b1\u7d0b\u7684\u5f69\u7c89\u8776"]} }
     ]
 })JSON";
+
+//  "titles": { "chi_sim": ["..."], ... } -> language code -> titles.
+std::map<std::string, std::vector<std::string>> read_titles(const JsonObject* json){
+    std::map<std::string, std::vector<std::string>> titles;
+    if (json == nullptr){
+        return titles;
+    }
+    for (const auto& item : *json){
+        const JsonArray* list = item.second.to_array();
+        if (list == nullptr){
+            continue;
+        }
+        for (const JsonValue& title : *list){
+            const std::string* text = title.to_string();
+            if (text != nullptr && !text->empty()){
+                titles[item.first].push_back(*text);
+            }
+        }
+    }
+    return titles;
+}
 
 //  "2027-02-26 01:59" -> 202702260159. Empty: 0.
 long long parse_end_utc(const std::string& text){
@@ -118,6 +148,17 @@ ClaimMysteryGift::ClaimMysteryGift()
         LockMode::LOCK_WHILE_RUNNING,
         GroupOption::EnableMode::DEFAULT_ENABLED
     )
+    , LANGUAGE(
+        "<b>Game Language:</b><br>"
+        "Used to read the gift names on the list, so only the checked gifts are claimed. "
+        "Not needed with Select all.",
+        {
+            Language::English, Language::Japanese, Language::Spanish, Language::French, Language::German,
+            Language::Italian, Language::Korean, Language::ChineseSimplified, Language::ChineseTraditional,
+        },
+        LockMode::LOCK_WHILE_RUNNING,
+        false
+    )
     , SELECT_ALL(
         "<b>Select all</b> (claim every unclaimed gift)",
         LockMode::LOCK_WHILE_RUNNING,
@@ -170,6 +211,7 @@ ClaimMysteryGift::ClaimMysteryGift()
                             gift->get_string_default("id"),
                             gift->get_string_default("name"),
                             parse_end_utc(gift->get_string_default("end_utc")),
+                            read_titles(gift->get_object("titles")),
                         });
                     }
                     loaded = true;
@@ -187,11 +229,36 @@ ClaimMysteryGift::ClaimMysteryGift()
                     gift.get_string_default("id"),
                     gift.get_string_default("name"),
                     parse_end_utc(gift.get_string_default("end_utc")),
+                    read_titles(gift.get_object("titles")),
                 });
             }
         }
     }
 
+    //  The title reader: language -> gift id -> titles.
+    {
+        std::map<std::string, JsonObject> languages;
+        for (const InternetGift& gift : m_gifts){
+            for (const auto& item : gift.titles){
+                JsonArray list;
+                for (const std::string& title : item.second){
+                    list.push_back(JsonValue(title));
+                }
+                languages[item.first][gift.id] = std::move(list);
+            }
+        }
+        JsonObject dictionary;
+        for (auto& item : languages){
+            dictionary[item.first] = std::move(item.second);
+        }
+        try{
+            m_title_reader.reset(new OCR::SmallDictionaryMatcher(dictionary));
+        }catch (Exception&){
+            m_title_reader.reset();
+        }
+    }
+
+    GIFTS.add_option(LANGUAGE, "language");
     GIFTS.add_option(SELECT_ALL, "select-all");
 
     //  A checkbox for each gift that is not over yet.
@@ -330,8 +397,8 @@ int mystery_gift_menu_row(const ImageViewRGB32& screen){
 }
 
 //  The Get via Internet list: up to 7 rows from y = 0.272, 0.0778 apart,
-//  x = 0.292 to 0.708. The selected row is white. Unclaimed gifts have a
-//  red dot at the top right of the row.
+//  x = 0.292 to 0.708. The selected row is white. Claimed gifts leave the
+//  list.
 const int GIFT_ROW_COUNT = 7;
 double gift_row_top(int row){
     return 0.2722 + 0.0778 * row;
@@ -386,12 +453,6 @@ bool gift_row_filled(const ImageViewRGB32& screen, int row){
     double top = gift_row_top(row);
     ImageFloatBox box(0.300, top + 0.012, 0.350, 0.042);
     return white_ratio(screen, box) >= 0.55 || mean_brightness(screen, box) >= 70;
-}
-bool gift_row_unclaimed(const ImageViewRGB32& screen, int row){
-    double top = gift_row_top(row);
-    return pixel_ratio(screen, ImageFloatBox(0.6975, top + 0.002, 0.009, 0.018), [](int r, int g, int b){
-        return r >= 200 && g <= 120 && b <= 140 && r - g >= 90;
-    }) >= 0.15;
 }
 
 
@@ -602,42 +663,52 @@ bool ClaimMysteryGift::gift_wanted(int gift) const{
     return option >= 0 && *m_gift_options[(size_t)option];
 }
 
+int ClaimMysteryGift::read_selected_gift(
+    SingleSwitchProgramEnvironment& env, const ImageViewRGB32& screen, int row
+) const{
+    if (!m_title_reader || !m_title_reader->languages()[LANGUAGE]){
+        return -1;
+    }
+    //  The title: dark text on the white (selected) row, left of the red dot.
+    ImageViewRGB32 image = extract_box_reference(
+        screen, ImageFloatBox(0.300, gift_row_top(row) + 0.010, 0.390, 0.048)
+    );
+    OCR::StringMatchResult result = m_title_reader->match_substring_from_image_multifiltered(
+        &env.logger(), LANGUAGE, image, OCR::BLACK_TEXT_FILTERS(), -1.40, 0.50
+    );
+    if (result.results.empty()){
+        return -1;
+    }
+    const std::string& id = result.results.begin()->second.token;
+    for (size_t c = 0; c < m_gifts.size(); c++){
+        if (m_gifts[c].id == id){
+            return (int)c;
+        }
+    }
+    return -1;
+}
+
 void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     //  Everything checked: claim every unclaimed row.
     const bool pick = !all_gifts_checked();
 
-    //  The gifts being given out now, in list order: row -> gift.
-    std::vector<int> active;
-    {
-        const long long now = now_utc_yyyymmddhhmm();
-        const std::vector<InternetGift>& gifts = m_gifts;
-        for (size_t c = 0; c < gifts.size(); c++){
-            if (gifts[c].end_utc == 0 || now <= gifts[c].end_utc){
-                active.push_back((int)c);
-            }
-        }
-    }
-
     pick_menu_option(env, context, 0);
 
-    context.wait_for_all_requests();
-    context.wait_for(500ms);
-    int rows = 0;
-    {
+    //  Claimed gifts are not on the list (they leave it as soon as they are
+    //  claimed), so a row is not always the same gift: the title of each
+    //  row is read (OCR) unless every gift is wanted.
+    auto count_rows = [&](){
+        context.wait_for_all_requests();
         VideoSnapshot snapshot = env.console.video().snapshot();
+        int rows = 0;
         while (rows < GIFT_ROW_COUNT && gift_row_filled(snapshot, rows)){
             rows++;
         }
-    }
-    env.log("Gift list: " + std::to_string(rows) + " rows, " + std::to_string(active.size()) + " known gifts given out now.");
-    if (pick && rows < (int)active.size()){
-        OperationFailedExceptionWithScreenshot::fire(
-            ErrorReportMode::NO_ERROR_REPORT,
-            "The gift list has fewer rows (" + std::to_string(rows) + ") than the known gifts (" +
-            std::to_string(active.size()) + "): the program's gift list is out of date.",
-            env.console
-        );
-    }
+        return rows;
+    };
+    context.wait_for_all_requests();
+    context.wait_for(500ms);
+    env.log("Gift list: " + std::to_string(count_rows()) + " rows.");
 
     //  Close the message box under the list. The list takes input once the
     //  green arrow is next to the selected row. A only when there is no
@@ -707,31 +778,30 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         );
     };
 
+    //  Top to bottom. A claimed row leaves the list and the rows below move
+    //  up, so the same row is looked at again after a claim.
     int claimed = 0;
-    for (int row = 0; row < rows; row++){
-        int gift = row < (int)active.size() ? active[(size_t)row] : -1;
-        const std::string what = gift >= 0
-            ? m_gifts[(size_t)gift].id
-            : "gift row " + std::to_string(row + 1);
-
-        //  A claimed gift leaves the list right away, so the rows below it
-        //  move up: the row on screen is the list row minus the gifts
-        //  claimed so far.
-        const int screen_row = row - claimed;
-
+    int row = 0;
+    for (int guard = 0; guard < 4 * GIFT_ROW_COUNT; guard++){
+        if (row >= count_rows()){
+            break;
+        }
+        move_to_row(row);
         context.wait_for_all_requests();
-        context.wait_for(300ms);
-        if (!gift_row_unclaimed(env.console.video().snapshot(), screen_row)){
-            env.log("Row " + std::to_string(row + 1) + " (" + what + "): already claimed.");
-            continue;
+        int gift = -1;
+        std::string what = "list row " + std::to_string(row + 1);
+        if (pick || LANGUAGE != Language::None){
+            gift = read_selected_gift(env, env.console.video().snapshot(), row);
+            what += gift >= 0
+                ? " (" + m_gifts[(size_t)gift].id + ")"
+                : " (not a known gift)";
         }
         if (pick && !gift_wanted(gift)){
-            env.log("Row " + std::to_string(row + 1) + " (" + what + "): not checked. Skipping.");
+            env.log(what + ": not checked. Skipping.");
+            row++;
             continue;
         }
-
-        move_to_row(screen_row);
-        env.log("Claiming row " + std::to_string(row + 1) + " (" + what + ").", COLOR_BLUE);
+        env.log("Claiming " + what + ".", COLOR_BLUE);
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Claiming " + what + ".");
         pbf_press_button(context, BUTTON_A, 100ms, 500ms);
         finish_receiving(env, context, true, what);
@@ -979,6 +1049,14 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
     //  Check the settings before pressing anything.
     if (!GIFTS.enabled() && !CODE_GROUP.enabled()){
         throw UserSetupError(env.logger(), "Turn on Get via Internet, Get with Code/Password, or both.");
+    }
+    if (GIFTS.enabled() && !all_gifts_checked()){
+        if (LANGUAGE == Language::None){
+            throw UserSetupError(env.logger(), "Get via Internet: set Game Language to find the checked gifts on the list (not needed with Select all).");
+        }
+        if (!m_title_reader || !m_title_reader->languages()[LANGUAGE]){
+            throw UserSetupError(env.logger(), "Get via Internet: no gift names for this Game Language yet (internet_gifts.json, \"titles\"). Use Select all, or add the names.");
+        }
     }
     if (GIFTS.enabled() && !any_gift_checked()){
         throw UserSetupError(env.logger(), "Get via Internet: check at least one gift (or turn Get via Internet off).");
