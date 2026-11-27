@@ -404,6 +404,26 @@ void cursor_to_key(double x, double y, int& col, int& row){
 
 
 
+//  Wait for the Mystery Gift menu, checking every 200ms, up to timeout.
+//  Returns as soon as it is seen, so a press is followed by only as much
+//  wait as the screen change needs.
+static bool wait_for_mystery_gift_menu(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    Milliseconds timeout
+){
+    WallClock start = current_time();
+    while (true){
+        context.wait_for_all_requests();
+        if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+            return true;
+        }
+        if (current_time() - start >= timeout){
+            return false;
+        }
+        context.wait_for(200ms);
+    }
+}
+
 void ClaimMysteryGift::open_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     for (int attempt = 0; attempt < 3; attempt++){
         env.log("Opening the Mystery Gift menu.");
@@ -427,7 +447,7 @@ void ClaimMysteryGift::open_mystery_gift_menu(SingleSwitchProgramEnvironment& en
         }
         env.log("No Mystery Gift menu. Backing out and trying again.", COLOR_RED);
         for (int c = 0; c < 4; c++){
-            pbf_press_button(context, BUTTON_B, 100ms, 1200ms);
+            pbf_press_button(context, BUTTON_B, 100ms, 700ms);
         }
     }
     OperationFailedExceptionWithScreenshot::fire(
@@ -793,14 +813,12 @@ void ClaimMysteryGift::claim_via_code(
             env.log("Code " + code + " was not accepted (wrong, used or expired). Leaving the keyboard.", COLOR_RED);
             failed += (failed.empty() ? "" : ", ") + code;
             for (int c = 0; c < 10; c++){
-                pbf_press_button(context, BUTTON_X, 100ms, 1500ms);
-                context.wait_for_all_requests();
-                if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+                pbf_press_button(context, BUTTON_X, 100ms, 100ms);
+                if (wait_for_mystery_gift_menu(env, context, 1500ms)){
                     break;
                 }
-                pbf_press_button(context, BUTTON_B, 100ms, 1500ms);
-                context.wait_for_all_requests();
-                if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+                pbf_press_button(context, BUTTON_B, 100ms, 100ms);
+                if (wait_for_mystery_gift_menu(env, context, 1500ms)){
                     break;
                 }
             }
@@ -825,12 +843,11 @@ void ClaimMysteryGift::claim_via_code(
 
 void ClaimMysteryGift::back_to_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     for (int c = 0; c < 10; c++){
-        context.wait_for_all_requests();
-        if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+        if (wait_for_mystery_gift_menu(env, context, c == 0 ? 0ms : 1500ms)){
             env.log("Back on the Mystery Gift menu.", COLOR_BLUE);
             return;
         }
-        pbf_press_button(context, BUTTON_B, 100ms, 1500ms);
+        pbf_press_button(context, BUTTON_B, 100ms, 100ms);
     }
     OperationFailedExceptionWithScreenshot::fire(
         ErrorReportMode::NO_ERROR_REPORT,
