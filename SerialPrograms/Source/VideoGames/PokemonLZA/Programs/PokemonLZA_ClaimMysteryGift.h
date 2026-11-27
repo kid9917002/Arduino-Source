@@ -80,8 +80,8 @@ private:
     std::vector<InternetGift> m_gifts;
 
     StartInGripOrGameOption START_LOCATION;
-    //  0: use the game already running. 1-8: restart the game with that
-    //  Switch user profile (position from the left).
+    //  Switch user profile to start the game with (position from the left,
+    //  0: the console's default). Same as Auto Story.
     SimpleIntegerOption<uint8_t> PROFILE;
     //  Get via Internet (can be turned off), with the gifts to claim.
     GroupOption GIFTS;

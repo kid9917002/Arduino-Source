@@ -106,9 +106,9 @@ ClaimMysteryGift_Descriptor::ClaimMysteryGift_Descriptor()
 ClaimMysteryGift::ClaimMysteryGift()
     : PROFILE(
         "<b>User Profile Position:</b><br>"
-        "The position, from left to right, of the Switch user profile to claim the gifts with. "
-        "The game is closed and started again with that profile.<br>"
-        "0: don't restart, use the game that is already running (and its profile).",
+        "The position, from left to right, of the Switch user profile to start the game with "
+        "(the game is closed and started again with it).<br>"
+        "If this is set to 0, Switch 1 defaults to the last-used profile, while Switch 2 defaults to the first profile (position 1).",
         LockMode::LOCK_WHILE_RUNNING,
         0, 0, 8 // default, min, max
     )
@@ -852,22 +852,22 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
         codes = read_codes(env);
     }
 
-    //  Connect the controller.
-    if (PROFILE != 0){
-        //  Home -> close the game -> start it with the chosen profile.
-        if (START_LOCATION.start_in_grip_menu()){
-            grip_menu_connect_go_home(context);
-        }else{
-            go_home(env.console, context);
-        }
-        env.log("Starting the game with user profile " + std::to_string((int)PROFILE) + ".", COLOR_BLUE);
-        env.console.overlay().add_log("Start game: profile " + std::to_string((int)PROFILE));
-        close_game_from_home(env.console, context);
-        start_game_from_home(
-            env.console, context,
-            ConsoleSettings::instance().TOLERATE_SYSTEM_UPDATE_MENU_FAST,
-            0, PROFILE
-        );
+    //  Connect the controller, then Home -> close the game -> start it with
+    //  the chosen profile (same as Auto Story).
+    if (START_LOCATION.start_in_grip_menu()){
+        grip_menu_connect_go_home(context);
+    }else{
+        go_home(env.console, context);
+    }
+    env.log("Starting the game with user profile " + std::to_string((int)PROFILE) + ".", COLOR_BLUE);
+    env.console.overlay().add_log("Start game: profile " + std::to_string((int)PROFILE));
+    close_game_from_home(env.console, context);
+    start_game_from_home(
+        env.console, context,
+        ConsoleSettings::instance().TOLERATE_SYSTEM_UPDATE_MENU_FAST,
+        0, PROFILE
+    );
+    {
         bool ok = openedgame_to_gamemenu(env.console, context, GameSettings::instance().START_GAME_WAIT);
         ok = ok && gamemenu_to_ingame(env.console, context, GameSettings::instance().ENTER_GAME_WAIT0);
         if (!ok){
@@ -877,19 +877,11 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
                 env.console
             );
         }
-        env.log("In the game.", COLOR_BLUE);
-        context.wait_for_all_requests();
-        context.wait_for(1000ms);
-        require_player(env.console, context, BUTTON_NONE);
-    }else if (START_LOCATION.start_in_grip_menu()){
-        //  Grip Menu -> Home -> back into the running game.
-        grip_menu_connect_go_home(context);
-        resume_game_from_home(env.console, context);
-        context.wait_for_all_requests();
-        context.wait_for(1000ms);
-    }else{
-        require_player(env.console, context, BUTTON_NONE);
     }
+    env.log("In the game.", COLOR_BLUE);
+    context.wait_for_all_requests();
+    context.wait_for(1000ms);
+    require_player(env.console, context, BUTTON_NONE);
 
     //  From the overworld (all menus closed).
     open_mystery_gift_menu(env, context);
