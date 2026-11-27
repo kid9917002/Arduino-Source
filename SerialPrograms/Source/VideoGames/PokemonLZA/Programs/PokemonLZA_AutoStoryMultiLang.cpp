@@ -89,7 +89,7 @@ const char* MACRO_JUMP_DOWN         = "ZA-09-3-跳下大樓.json";
 const char* MACRO_WALK_TO_PC        = "ZA-10-2-走向PC.json";
 const char* MACRO_WILD_ZONE_1       = "ZA-11-1-走向WildZone1-1.json";
 const char* MACRO_WILD_ZONE_3       = "ZA-11-3-走向WildZone1-3.json";
-const char* MACRO_FIRST_CATCH       = "ZA-12-1-捕捉1.json";
+const char* MACRO_FIRST_CATCH       = "ZA-12-1-捕捉教學1.json";
 //  Walking routes. Each ends standing still, facing the target.
 const char* MACRO_WALK_TO_SCATTERBUG = "ZA-12-4-走向粉蝶蟲.json";
 
@@ -3801,7 +3801,7 @@ const char* DEFAULT_STORY_FLOW =
     R"JSON(        { "id": "ZA-11-1 Walk to Wild Zone 1", "macro": "ZA-11-1-走向WildZone1-1.json", "start": "wild-zone-1" },)JSON" "\n"
     R"JSON(        { "id": "ZA-11-2 Wild Zone 1", "story": { "before": 10, "after": 10, "quiet": 1200 } },)JSON" "\n"
     R"JSON(        { "id": "ZA-11-3 Into Wild Zone 1", "macro": "ZA-11-3-走向WildZone1-3.json" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-12-1 First catch", "macro": "ZA-12-1-捕捉1.json", "start": "first-catch" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-12-1 First catch", "macro": "ZA-12-1-捕捉教學1.json", "start": "first-catch" },)JSON" "\n"
     R"JSON(        { "id": "ZA-12-2 Bunnelby battle + catch", "action": "capture_battle", "start": "bunnelby" },)JSON" "\n"
     R"JSON(        { "id": "ZA-12-3 after Bunnelby", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "after-bunnelby" },)JSON" "\n"
     R"JSON(        { "id": "ZA-12-4 Walk to Scatterbug", "macro": "ZA-12-4-走向粉蝶蟲.json", "start": "scatterbug" },)JSON" "\n"
