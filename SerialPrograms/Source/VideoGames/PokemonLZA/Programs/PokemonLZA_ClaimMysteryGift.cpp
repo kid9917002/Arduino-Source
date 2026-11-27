@@ -50,8 +50,9 @@ const char* GIFT_LIST_FILE = "PokemonLZA/MysteryGift/internet_gifts.json";
 //  (OCR language codes: eng, jpn, chi_sim, chi_tra, kor, fra, deu, ita,
 //  spa), to find the checked gifts on the list. Several per language are
 //  fine. Checked on game screens (user's screenshot / game videos): all of
-//  chi_sim, chi_tra, eng, jpn, fra, kor; spa (es-ES and es-MX); ita and deu
-//  only diancie / project-m (deu only diancie). The rest are from news text.
+//  chi_sim, chi_tra, eng, jpn, fra, kor, spa (es-MX; es-ES all but the
+//  Vivillon); ita / deu all but the Vivillon. Those Vivillon titles are
+//  guesses from news text.
 const char* DEFAULT_GIFT_LIST = R"JSON({
     "gifts": [
         { "id": "diancie", "name": "Diancite + Side Mission \"Shine Bright Like a Gemstone\"", "end_utc": "",
