@@ -714,9 +714,14 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
             ? m_gifts[(size_t)gift].id
             : "gift row " + std::to_string(row + 1);
 
+        //  A claimed gift leaves the list right away, so the rows below it
+        //  move up: the row on screen is the list row minus the gifts
+        //  claimed so far.
+        const int screen_row = row - claimed;
+
         context.wait_for_all_requests();
         context.wait_for(300ms);
-        if (!gift_row_unclaimed(env.console.video().snapshot(), row)){
+        if (!gift_row_unclaimed(env.console.video().snapshot(), screen_row)){
             env.log("Row " + std::to_string(row + 1) + " (" + what + "): already claimed.");
             continue;
         }
@@ -725,7 +730,7 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
             continue;
         }
 
-        move_to_row(row);
+        move_to_row(screen_row);
         env.log("Claiming row " + std::to_string(row + 1) + " (" + what + ").", COLOR_BLUE);
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Claiming " + what + ".");
         pbf_press_button(context, BUTTON_A, 100ms, 500ms);
