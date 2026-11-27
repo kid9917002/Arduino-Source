@@ -26,6 +26,7 @@
 #include "NintendoSwitch/Programs/NintendoSwitch_GameEntry.h"
 #include "VideoGames/PokemonLZA/PokemonLZA_Settings.h"
 #include "PokemonLZA_GameEntry.h"
+#include "PokemonLZA_MenuNavigation.h"
 #include "Pokemon/Pokemon_Strings.h"
 #include "PokemonLZA_ClaimMysteryGift.h"
 
@@ -427,23 +428,19 @@ static bool wait_for_mystery_gift_menu(
 void ClaimMysteryGift::open_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     for (int attempt = 0; attempt < 3; attempt++){
         env.log("Opening the Mystery Gift menu.");
-        //  X: menu. Up: from the first item to the last one (Online Play).
-        pbf_press_button(context, BUTTON_X, 100ms, 2000ms);
-        pbf_press_dpad(context, DPAD_UP, 100ms, 600ms);
+        //  X: menu, waited for by detection (same as the other LZA programs).
+        overworld_to_main_menu(env.console, context);
+        //  Up: from the first item to the last one (Online Play).
+        pbf_press_dpad(context, DPAD_UP, 100ms, 300ms);
         pbf_press_button(context, BUTTON_A, 100ms, 3000ms);
         //  Online Play: left, down -> Mystery Gift.
-        pbf_press_dpad(context, DPAD_LEFT, 100ms, 500ms);
-        pbf_press_dpad(context, DPAD_DOWN, 100ms, 500ms);
-        pbf_press_button(context, BUTTON_A, 100ms, 1000ms);
+        pbf_press_dpad(context, DPAD_LEFT, 100ms, 300ms);
+        pbf_press_dpad(context, DPAD_DOWN, 100ms, 300ms);
+        pbf_press_button(context, BUTTON_A, 100ms, 100ms);
 
-        WallClock start = current_time();
-        while (current_time() - start < std::chrono::seconds(20)){
-            context.wait_for_all_requests();
-            if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
-                env.log("On the Mystery Gift menu.", COLOR_BLUE);
-                return;
-            }
-            context.wait_for(500ms);
+        if (wait_for_mystery_gift_menu(env, context, 20000ms)){
+            env.log("On the Mystery Gift menu.", COLOR_BLUE);
+            return;
         }
         env.log("No Mystery Gift menu. Backing out and trying again.", COLOR_RED);
         for (int c = 0; c < 4; c++){
