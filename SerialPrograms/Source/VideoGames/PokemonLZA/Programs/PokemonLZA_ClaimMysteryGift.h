@@ -16,7 +16,6 @@
 #include "Common/Cpp/Options/TextEditOption.h"
 #include "Common/Cpp/Options/GroupOption.h"
 #include "Common/Cpp/Options/BooleanCheckBoxOption.h"
-#include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/Options/NintendoSwitch_StartInGripMenuOption.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
@@ -41,10 +40,6 @@ public:
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
 
 private:
-    enum class InternetMode{
-        All,
-        Selected,
-    };
 
     void open_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
     //  Select a row of the Mystery Gift menu (0: Internet, 1: Code) and
@@ -71,6 +66,7 @@ private:
     //  while every gift is checked.
     virtual void on_config_value_changed(void* object) override;
     bool all_gifts_checked() const;
+    bool any_gift_checked() const;
 
 private:
     //  Gifts of "Get via Internet", in list order, from
@@ -85,7 +81,6 @@ private:
     StartInGripOrGameOption START_LOCATION;
     //  Get via Internet (can be turned off), with the gifts to claim.
     GroupOption GIFTS;
-    EnumDropdownOption<InternetMode> INTERNET_MODE;
     BooleanCheckBoxOption SELECT_ALL;
     std::atomic<bool> m_syncing_select_all;
     //  One per gift still being given out (see the gift list in the .cpp).

@@ -105,18 +105,8 @@ ClaimMysteryGift::ClaimMysteryGift()
         LockMode::LOCK_WHILE_RUNNING,
         GroupOption::EnableMode::DEFAULT_ENABLED
     )
-    , INTERNET_MODE(
-        "<b>Gifts to claim:</b><br>"
-        "The Internet list only shows the gifts that are being given out now, so gifts past their end date never show up.",
-        {
-            {InternetMode::All,      "all",      "Every unclaimed gift"},
-            {InternetMode::Selected, "selected", "Only the gifts checked below"},
-        },
-        LockMode::LOCK_WHILE_RUNNING,
-        InternetMode::All
-    )
     , SELECT_ALL(
-        "<b>Select all</b>",
+        "<b>Select all</b> (claim every unclaimed gift)",
         LockMode::LOCK_WHILE_RUNNING,
         false
     )
@@ -124,7 +114,7 @@ ClaimMysteryGift::ClaimMysteryGift()
     , OTHER_GIFTS(
         "<b>Other gifts:</b><br>Also claim the gifts below the ones above (new distributions).",
         LockMode::LOCK_WHILE_RUNNING,
-        false
+        true
     )
     , CODE_GROUP(
         "Get with Code/Password (done after Get via Internet when both are on)",
@@ -189,7 +179,6 @@ ClaimMysteryGift::ClaimMysteryGift()
         }
     }
 
-    GIFTS.add_option(INTERNET_MODE, "mode");
     GIFTS.add_option(SELECT_ALL, "select-all");
 
     //  A checkbox for each gift that is not over yet.
@@ -236,6 +225,14 @@ bool ClaimMysteryGift::all_gifts_checked() const{
     for (const std::unique_ptr<BooleanCheckBoxOption>& option : m_gift_options){
         if (!*option){
             return false;
+        }
+    }
+    return OTHER_GIFTS;
+}
+bool ClaimMysteryGift::any_gift_checked() const{
+    for (const std::unique_ptr<BooleanCheckBoxOption>& option : m_gift_options){
+        if (*option){
+            return true;
         }
     }
     return OTHER_GIFTS;
@@ -524,7 +521,8 @@ bool ClaimMysteryGift::gift_wanted(int gift) const{
 }
 
 void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    const bool pick = INTERNET_MODE == InternetMode::Selected;
+    //  Everything checked: claim every unclaimed row.
+    const bool pick = !all_gifts_checked();
 
     //  The gifts being given out now, in list order: row -> gift.
     std::vector<int> active;
@@ -832,6 +830,9 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
     //  Check the settings before pressing anything.
     if (!GIFTS.enabled() && !CODE_GROUP.enabled()){
         throw UserSetupError(env.logger(), "Turn on Get via Internet, Get with Code/Password, or both.");
+    }
+    if (GIFTS.enabled() && !any_gift_checked()){
+        throw UserSetupError(env.logger(), "Get via Internet: check at least one gift (or turn Get via Internet off).");
     }
     std::vector<std::string> codes;
     if (CODE_GROUP.enabled()){
