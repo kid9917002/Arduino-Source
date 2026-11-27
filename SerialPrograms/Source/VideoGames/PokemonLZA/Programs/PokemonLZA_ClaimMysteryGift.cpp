@@ -456,10 +456,10 @@ void ClaimMysteryGift::open_mystery_gift_menu(SingleSwitchProgramEnvironment& en
 }
 
 void ClaimMysteryGift::pick_menu_option(SingleSwitchProgramEnvironment& env, ProControllerContext& context, int option){
-    //  Move to the option. Left stick, as on the gift list (the d-pad did
-    //  not move the gift list); switch to the d-pad if the stick does not
-    //  move the cursor here.
-    bool use_stick = true;
+    //  Move to the option with the d-pad (only the gift list needs the left
+    //  stick, checked by the user 2026-11-27). If a press does not move the
+    //  cursor, switch to the stick.
+    bool use_stick = false;
     int last_row = -1;
     for (int c = 0; c < 10; c++){
         context.wait_for_all_requests();
