@@ -62,7 +62,7 @@ public:
 };
 
 
-//  Macro folder: shows the default folder (Resources/PokemonLZA/AutoStory/)
+//  Macro folder: shows the default folder "Resources/PokemonLZA/AutoStory"
 //  instead of an empty box. A setting saved empty by an older build loads
 //  back as the default.
 class MacroFolderOption : public StringOption{
@@ -70,7 +70,11 @@ public:
     using StringOption::StringOption;
     virtual void load_json(const JsonValue& json) override{
         StringOption::load_json(json);
-        if (std::string(*this).empty()){
+        //  Empty (older builds) or the long default path of the previous
+        //  build (".../Binaries64/../Resources/PokemonLZA/AutoStory/"): show
+        //  the short default.
+        std::string path = *this;
+        if (path.empty() || path.find("../Resources/PokemonLZA/AutoStory") != std::string::npos){
             set(default_value());
         }
     }

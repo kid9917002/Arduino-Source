@@ -173,8 +173,8 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         "Folder that contains the Turbo Macro JSON files, story_dialog.json and story_flow.json. "
         "Default: Resources\\PokemonLZA\\AutoStory of the program folder.",
         LockMode::LOCK_WHILE_RUNNING,
-        RESOURCE_PATH() + MACRO_SUBFOLDER_DEFAULT,
-        RESOURCE_PATH() + MACRO_SUBFOLDER_DEFAULT
+        "Resources/PokemonLZA/AutoStory",
+        "Resources/PokemonLZA/AutoStory"
     )
     , START_POINT(
         "<b>Start From:</b><br>"
@@ -456,6 +456,10 @@ std::string AutoStoryMultiLang::macro_file_path(const std::string& filename) con
     std::string path = FULL_GAME ? std::string() : std::string(MACRO_FOLDER);
     if (path.empty()){
         path = RESOURCE_PATH() + MACRO_SUBFOLDER_DEFAULT;
+    }else if (path.rfind("Resources/", 0) == 0 || path.rfind("Resources\\", 0) == 0){
+        //  "Resources/..." is the Resources folder of the program, wherever
+        //  the program was started from.
+        path = RESOURCE_PATH() + path.substr(10);
     }
     if (!path.empty() && path.back() != '/' && path.back() != '\\'){
         path += "/";
