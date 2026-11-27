@@ -41,10 +41,9 @@ public:
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
 
 private:
-    enum class Method{
-        InternetAll,
-        InternetSelected,
-        Code,
+    enum class InternetMode{
+        All,
+        Selected,
     };
 
     void open_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
@@ -52,7 +51,14 @@ private:
     //  get through the "save" question and the connection.
     void pick_menu_option(SingleSwitchProgramEnvironment& env, ProControllerContext& context, int option);
     void claim_via_internet(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
-    void claim_via_code(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+    //  The codes of the Code / Password box, checked and cleaned up.
+    std::vector<std::string> read_codes(SingleSwitchProgramEnvironment& env) const;
+    void claim_via_code(
+        SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+        const std::vector<std::string>& codes
+    );
+    //  From the Get via Internet list back to the Mystery Gift menu.
+    void back_to_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
     //  Press A through the gift animation and result until the given screen
     //  is back.
     void finish_receiving(
@@ -77,14 +83,17 @@ private:
     std::vector<InternetGift> m_gifts;
 
     StartInGripOrGameOption START_LOCATION;
-    EnumDropdownOption<Method> METHOD;
+    //  Get via Internet (can be turned off), with the gifts to claim.
     GroupOption GIFTS;
+    EnumDropdownOption<InternetMode> INTERNET_MODE;
     BooleanCheckBoxOption SELECT_ALL;
     std::atomic<bool> m_syncing_select_all;
     //  One per gift still being given out (see the gift list in the .cpp).
     std::vector<std::unique_ptr<BooleanCheckBoxOption>> m_gift_options;
     std::vector<int> m_gift_option_index;  //  gift index -> m_gift_options, or -1
     BooleanCheckBoxOption OTHER_GIFTS;
+    //  Get with Code/Password (can be turned off). Done after Internet.
+    GroupOption CODE_GROUP;
     TextEditOption CODE;
 
     EventNotificationOption NOTIFICATION_STATUS_UPDATE;

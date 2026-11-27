@@ -100,20 +100,20 @@ ClaimMysteryGift_Descriptor::ClaimMysteryGift_Descriptor()
 
 
 ClaimMysteryGift::ClaimMysteryGift()
-    : METHOD(
-        "<b>Method:</b><br>"
+    : GIFTS(
+        "Get via Internet",
+        LockMode::LOCK_WHILE_RUNNING,
+        GroupOption::EnableMode::DEFAULT_ENABLED
+    )
+    , INTERNET_MODE(
+        "<b>Gifts to claim:</b><br>"
         "The Internet list only shows the gifts that are being given out now, so gifts past their end date never show up.",
         {
-            {Method::InternetAll,      "internet-all",      "Get via Internet: claim every unclaimed gift"},
-            {Method::InternetSelected, "internet-selected", "Get via Internet: claim only the gifts checked below"},
-            {Method::Code,             "code",              "Get with Code/Password: enter the code below"},
+            {InternetMode::All,      "all",      "Every unclaimed gift"},
+            {InternetMode::Selected, "selected", "Only the gifts checked below"},
         },
         LockMode::LOCK_WHILE_RUNNING,
-        Method::InternetAll
-    )
-    , GIFTS(
-        "Gifts to claim (Get via Internet: claim only the gifts checked below)",
-        LockMode::LOCK_WHILE_RUNNING
+        InternetMode::All
     )
     , SELECT_ALL(
         "<b>Select all</b>",
@@ -126,9 +126,14 @@ ClaimMysteryGift::ClaimMysteryGift()
         LockMode::LOCK_WHILE_RUNNING,
         false
     )
+    , CODE_GROUP(
+        "Get with Code/Password (done after Get via Internet when both are on)",
+        LockMode::LOCK_WHILE_RUNNING,
+        GroupOption::EnableMode::DEFAULT_DISABLED
+    )
     , CODE(
         "<b>Code / Password:</b><br>"
-        "For Get with Code/Password. One code per line. "
+        "One code per line. "
         "Not case sensitive; spaces and dashes are ignored.",
         LockMode::LOCK_WHILE_RUNNING,
         "", "CODE1\nCODE2"
@@ -184,6 +189,7 @@ ClaimMysteryGift::ClaimMysteryGift()
         }
     }
 
+    GIFTS.add_option(INTERNET_MODE, "mode");
     GIFTS.add_option(SELECT_ALL, "select-all");
 
     //  A checkbox for each gift that is not over yet.
@@ -206,9 +212,10 @@ ClaimMysteryGift::ClaimMysteryGift()
     GIFTS.add_option(OTHER_GIFTS, "other");
 
     PA_ADD_OPTION(START_LOCATION);
-    PA_ADD_OPTION(METHOD);
+    CODE_GROUP.add_option(CODE, "code");
+
     PA_ADD_OPTION(GIFTS);
-    PA_ADD_OPTION(CODE);
+    PA_ADD_OPTION(CODE_GROUP);
     PA_ADD_OPTION(NOTIFICATIONS);
 
     SELECT_ALL = all_gifts_checked();
@@ -517,7 +524,7 @@ bool ClaimMysteryGift::gift_wanted(int gift) const{
 }
 
 void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
-    const bool pick = METHOD == Method::InternetSelected;
+    const bool pick = INTERNET_MODE == InternetMode::Selected;
 
     //  The gifts being given out now, in list order: row -> gift.
     std::vector<int> active;
@@ -600,7 +607,7 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
     env.log("Gifts claimed: " + std::to_string(claimed), COLOR_BLUE);
 }
 
-void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+std::vector<std::string> ClaimMysteryGift::read_codes(SingleSwitchProgramEnvironment& env) const{
     //  Several codes: one per line (commas and semicolons also work).
     //  Each: upper case, no spaces or dashes. The keyboard has no I / O / Z
     //  (they read as 1 / 0 / 2).
@@ -648,6 +655,12 @@ void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProCo
         }
         env.log("Codes (" + std::to_string(codes.size()) + "): " + all);
     }
+    return codes;
+}
+void ClaimMysteryGift::claim_via_code(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    const std::vector<std::string>& codes
+){
 
     auto read_cursor = [&](int& col, int& row){
         for (int c = 0; c < 10; c++){
@@ -797,8 +810,33 @@ void ClaimMysteryGift::claim_via_code(SingleSwitchProgramEnvironment& env, ProCo
     );
 }
 
+void ClaimMysteryGift::back_to_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    for (int c = 0; c < 10; c++){
+        context.wait_for_all_requests();
+        if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
+            env.log("Back on the Mystery Gift menu.", COLOR_BLUE);
+            return;
+        }
+        pbf_press_button(context, BUTTON_B, 100ms, 1500ms);
+    }
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "Unable to get back to the Mystery Gift menu from the Get via Internet list.",
+        env.console
+    );
+}
+
 void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
+
+    //  Check the settings before pressing anything.
+    if (!GIFTS.enabled() && !CODE_GROUP.enabled()){
+        throw UserSetupError(env.logger(), "Turn on Get via Internet, Get with Code/Password, or both.");
+    }
+    std::vector<std::string> codes;
+    if (CODE_GROUP.enabled()){
+        codes = read_codes(env);
+    }
 
     //  Connect the controller.
     if (START_LOCATION.start_in_grip_menu()){
@@ -814,10 +852,14 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
     //  From the overworld (all menus closed).
     open_mystery_gift_menu(env, context);
 
-    if (METHOD == Method::Code){
-        claim_via_code(env, context);
-    }else{
+    if (GIFTS.enabled()){
         claim_via_internet(env, context);
+        if (CODE_GROUP.enabled()){
+            back_to_mystery_gift_menu(env, context);
+        }
+    }
+    if (CODE_GROUP.enabled()){
+        claim_via_code(env, context, codes);
     }
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
