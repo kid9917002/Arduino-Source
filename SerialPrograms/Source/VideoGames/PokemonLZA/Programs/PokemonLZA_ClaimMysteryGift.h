@@ -11,6 +11,7 @@
 #define PokemonAutomation_PokemonLZA_ClaimMysteryGift_H
 
 #include <vector>
+#include <atomic>
 #include <memory>
 #include "Common/Cpp/Options/TextEditOption.h"
 #include "Common/Cpp/Options/GroupOption.h"
@@ -31,9 +32,10 @@ public:
     ClaimMysteryGift_Descriptor();
 };
 
-class ClaimMysteryGift : public SingleSwitchProgramInstance{
+class ClaimMysteryGift : public SingleSwitchProgramInstance, public ConfigOption::Listener{
 public:
     using Descriptor = ClaimMysteryGift_Descriptor;
+    ~ClaimMysteryGift();
     ClaimMysteryGift();
 
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
@@ -59,6 +61,11 @@ private:
     );
     bool gift_wanted(int gift) const;
 
+    //  "Select all" checks / unchecks every gift; it shows checked only
+    //  while every gift is checked.
+    virtual void on_config_value_changed(void* object) override;
+    bool all_gifts_checked() const;
+
 private:
     //  Gifts of "Get via Internet", in list order, from
     //  Resources/PokemonLZA/MysteryGift/internet_gifts.json.
@@ -72,6 +79,8 @@ private:
     StartInGripOrGameOption START_LOCATION;
     EnumDropdownOption<Method> METHOD;
     GroupOption GIFTS;
+    BooleanCheckBoxOption SELECT_ALL;
+    std::atomic<bool> m_syncing_select_all;
     //  One per gift still being given out (see the gift list in the .cpp).
     std::vector<std::unique_ptr<BooleanCheckBoxOption>> m_gift_options;
     std::vector<int> m_gift_option_index;  //  gift index -> m_gift_options, or -1

@@ -115,6 +115,12 @@ ClaimMysteryGift::ClaimMysteryGift()
         "Gifts to claim (Get via Internet: claim only the gifts checked below)",
         LockMode::LOCK_WHILE_RUNNING
     )
+    , SELECT_ALL(
+        "<b>Select all</b>",
+        LockMode::LOCK_WHILE_RUNNING,
+        false
+    )
+    , m_syncing_select_all(false)
     , OTHER_GIFTS(
         "<b>Other gifts:</b><br>Also claim the gifts below the ones above (new distributions).",
         LockMode::LOCK_WHILE_RUNNING,
@@ -178,6 +184,8 @@ ClaimMysteryGift::ClaimMysteryGift()
         }
     }
 
+    GIFTS.add_option(SELECT_ALL, "select-all");
+
     //  A checkbox for each gift that is not over yet.
     const long long now = now_utc_yyyymmddhhmm();
     for (const InternetGift& gift : m_gifts){
@@ -202,6 +210,44 @@ ClaimMysteryGift::ClaimMysteryGift()
     PA_ADD_OPTION(GIFTS);
     PA_ADD_OPTION(CODE);
     PA_ADD_OPTION(NOTIFICATIONS);
+
+    SELECT_ALL = all_gifts_checked();
+    SELECT_ALL.add_listener(*this);
+    for (const std::unique_ptr<BooleanCheckBoxOption>& option : m_gift_options){
+        option->add_listener(*this);
+    }
+    OTHER_GIFTS.add_listener(*this);
+}
+ClaimMysteryGift::~ClaimMysteryGift(){
+    OTHER_GIFTS.remove_listener(*this);
+    for (const std::unique_ptr<BooleanCheckBoxOption>& option : m_gift_options){
+        option->remove_listener(*this);
+    }
+    SELECT_ALL.remove_listener(*this);
+}
+bool ClaimMysteryGift::all_gifts_checked() const{
+    for (const std::unique_ptr<BooleanCheckBoxOption>& option : m_gift_options){
+        if (!*option){
+            return false;
+        }
+    }
+    return OTHER_GIFTS;
+}
+void ClaimMysteryGift::on_config_value_changed(void* object){
+    if (m_syncing_select_all.load()){
+        return;
+    }
+    m_syncing_select_all.store(true);
+    if (object == static_cast<void*>(static_cast<BooleanCheckBoxCell*>(&SELECT_ALL))){
+        const bool checked = SELECT_ALL;
+        for (const std::unique_ptr<BooleanCheckBoxOption>& option : m_gift_options){
+            *option = checked;
+        }
+        OTHER_GIFTS = checked;
+    }else{
+        SELECT_ALL = all_gifts_checked();
+    }
+    m_syncing_select_all.store(false);
 }
 
 
