@@ -3831,13 +3831,11 @@ void AutoStory::run_flow_action(
                     black_seen = true;
                     spinner_last = current_time();
                 }
-                //  Pure black (nothing at all on screen): the gap between the
-                //  loading screen and the video, or after the skipped video.
-                //  The video's fade-in is dark but not pure black.
-                ImageStats whole = image_stats(snapshot);
-                const bool pure_black = !spinner && whole.average.sum() < 20 && whole.stddev.sum() < 20;
-                if (skips > 0 && (spinner || pure_black || dialog_on_screen(snapshot))){
-                    video_done = true;  //  the video is over: loading
+                //  + is tapped even on a black screen now (the skip prompt
+                //  shows there too), so black after a tap does not mean the
+                //  video is over: only the hold below or a dialog says so.
+                if (skips > 0 && dialog_on_screen(snapshot)){
+                    video_done = true;
                 }
                 if (!video_done){
                     //  The video starts as soon as the loading screen is gone
@@ -3848,7 +3846,9 @@ void AutoStory::run_flow_action(
                     if (black_seen){
                         //  The loading screen is gone and something is on
                         //  screen (the video, even while it fades in).
-                        playing = !spinner && !pure_black && current_time() - spinner_last >= 500ms;
+                        //  The skip prompt also shows on the black screen before
+                        //  the video, so pure black is fine here.
+                        playing = !spinner && current_time() - spinner_last >= 500ms;
                     }else{
                         playing = current_time() - wait_start > std::chrono::seconds(60) &&
                             !black && !dialog_on_screen(snapshot);
