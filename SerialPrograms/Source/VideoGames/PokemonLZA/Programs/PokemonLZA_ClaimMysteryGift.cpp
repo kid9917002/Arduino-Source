@@ -1175,9 +1175,9 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
 
     if (GIFTS.enabled()){
         claim_via_internet(env, context);
-        if (CODE_GROUP.enabled()){
-            back_to_mystery_gift_menu(env, context);
-        }
+        //  Leave the list ("Stop receiving?" -> Yes) also when no codes
+        //  follow, so the program ends on the Mystery Gift menu.
+        back_to_mystery_gift_menu(env, context);
     }
     if (CODE_GROUP.enabled()){
         claim_via_code(env, context, codes);
