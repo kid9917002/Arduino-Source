@@ -535,10 +535,18 @@ const char* CODE_KEY_ROWS[4] = {
     "ASDFGHJKL&;",
     "ZXCVBNM*#!?",
 };
-const double KEY_X0 = 0.1021;
-const double KEY_PITCH_X = 0.0698;
-const double KEY_Y0 = 0.5583;
-const double KEY_PITCH_Y = 0.0707;
+//  Key centres: column 0 x, column pitch, row 0 y, row pitch. The Switch 2
+//  keyboard (dark panel, 35) and the Switch 1 keyboard (grey panel, 70;
+//  bigger keys, user's screenshot 2026-11-28 22:34) differ.
+struct KeyLayout{
+    const char* name;
+    double x0;
+    double pitch_x;
+    double y0;
+    double pitch_y;
+};
+const KeyLayout SWITCH2_KEYS{"Switch 2", 0.1021, 0.0698, 0.5583, 0.0707};
+const KeyLayout SWITCH1_KEYS{"Switch 1", 0.0780, 0.0749, 0.5040, 0.0889};
 //  Columns go around: left of the first column is the right column
 //  (Backspace / New Line / OK), column 11.
 const int KEY_COLUMNS = 12;
@@ -579,14 +587,22 @@ bool code_keyboard_open(const ImageViewRGB32& screen){
     return pixel_ratio(screen, ImageFloatBox(0.015, 0.55, 0.020, 0.30), panel) >= 0.80 &&
         pixel_ratio(screen, ImageFloatBox(0.200, 0.905, 0.600, 0.020), panel) >= 0.80;
 }
-void cursor_to_key(double x, double y, int& col, int& row){
-    if (x > 0.85){
+//  Which keyboard: by its panel colour (35 on Switch 2, 70 on Switch 1).
+const KeyLayout& code_keyboard_layout(const ImageViewRGB32& screen){
+    return mean_brightness(screen, ImageFloatBox(0.015, 0.55, 0.020, 0.30)) >= 52
+        ? SWITCH1_KEYS
+        : SWITCH2_KEYS;
+}
+void cursor_to_key(const KeyLayout& layout, double x, double y, int& col, int& row){
+    //  The right column (Backspace / New Line / OK) is at x 0.89 / 0.91;
+    //  column 10 at 0.80 / 0.83.
+    if (x > 0.86){
         col = KEY_COLUMNS - 1;
     }else{
-        col = (int)std::lround((x - KEY_X0) / KEY_PITCH_X);
+        col = (int)std::lround((x - layout.x0) / layout.pitch_x);
         col = std::max(0, std::min(col, KEY_COLUMNS - 2));
     }
-    row = (int)std::lround((y - KEY_Y0) / KEY_PITCH_Y);
+    row = (int)std::lround((y - layout.y0) / layout.pitch_y);
     row = std::max(0, std::min(row, 4));
 }
 
@@ -1038,13 +1054,15 @@ void ClaimMysteryGift::claim_via_code(
     const std::vector<std::string>& codes
 ){
 
+    //  Set once the keyboard is up (Switch 1 and 2 keyboards differ).
+    const KeyLayout* layout = &SWITCH2_KEYS;
     auto read_cursor = [&](int& col, int& row){
         for (int c = 0; c < 10; c++){
             context.wait_for_all_requests();
             double x = 0;
             double y = 0;
             if (lza_find_keyboard_cursor(env.console.video().snapshot(), x, y)){
-                cursor_to_key(x, y, col, row);
+                cursor_to_key(*layout, x, y, col, row);
                 char key = row < 4 && col < KEY_COLUMNS - 1 ? CODE_KEY_ROWS[row][col] : '-';
                 env.log(
                     "Keyboard cursor: x = " + std::to_string(x) + ", y = " + std::to_string(y) +
@@ -1128,6 +1146,9 @@ void ClaimMysteryGift::claim_via_code(
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Entering " + what + ".");
 
         pick_menu_option(env, context, 1);
+        context.wait_for_all_requests();
+        layout = &code_keyboard_layout(env.console.video().snapshot());
+        env.log(std::string("Code keyboard: ") + layout->name + " layout.");
         //  The keyboard slides up when it opens and takes no input until it
         //  is in place. It opens with the cursor on "1" (user's screenshot
         //  2026-11-28 13:48), but the first reads can be wrong: the first
@@ -1146,7 +1167,7 @@ void ClaimMysteryGift::claim_via_code(
                 if (lza_find_keyboard_cursor(env.console.video().snapshot(), x, y)){
                     int col = 0;
                     int row = 0;
-                    cursor_to_key(x, y, col, row);
+                    cursor_to_key(*layout, x, y, col, row);
                     same = (col == last_col && row == last_row) ? same + 1 : 1;
                     last_col = col;
                     last_row = row;
