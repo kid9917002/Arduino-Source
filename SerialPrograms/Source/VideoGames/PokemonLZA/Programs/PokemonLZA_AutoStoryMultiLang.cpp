@@ -3799,6 +3799,28 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
         grip_menu_connect_go_home(context);
         if (!from_beginning){
             resume_game_from_home(env.console, context);
+            //  The game takes a moment to come back from HOME: button
+            //  presses before that are lost and the first macro walks short.
+            //  Wait until the overworld HUD is back (at most 15 seconds).
+            WallClock wait_start = current_time();
+            int hud_seen = 0;
+            while (current_time() - wait_start < std::chrono::seconds(15)){
+                context.wait_for(300ms);
+                context.wait_for_all_requests();
+                if (overworld_hud(env.console.video().snapshot())){
+                    if (++hud_seen >= 3){
+                        break;
+                    }
+                }else{
+                    hud_seen = 0;
+                }
+            }
+            env.log(hud_seen >= 3
+                ? "Back in the game (HUD seen)."
+                : "Back in the game? No HUD seen in 15 seconds. Starting anyway.",
+                hud_seen >= 3 ? COLOR_BLUE : COLOR_RED
+            );
+            context.wait_for(500ms);
         }
     }else{
         require_player(env.console, context, BUTTON_NONE);
