@@ -156,7 +156,8 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     )
     , START_POINT(
         "<b>Start From:</b><br>"
-        "Which step to start at. The game must already be on the screen that step starts from.",
+        "Which step to start at. The game must already be on the screen that step starts from "
+        "(or check \"Restart the game first\" to load the save at that step).",
         {
             {StartPoint::CreateCharacter, "create-character", "ZA-00 Start the game + language (beginning, from Home)"},
             {StartPoint::SelectCharacter, "select-character", "ZA-00 LOOKS screen (pick character)"},
@@ -195,6 +196,15 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         },
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
+    )
+    , RESTART_GAME(
+        "<b>Restart the game first:</b><br>"
+        "Close the game, start it again with the user profile above, load the save (A on the title screen) "
+        "and start at the step above once the overworld HUD is up. The game does not need to be running. "
+        "Pick the step the save loads at (e.g. ZA-05-10 after the roll tutorial save): "
+        "only steps that start on the overworld.",
+        LockMode::LOCK_WHILE_RUNNING,
+        false
     )
     , PROFILE(
         "<b>User Profile Position:</b><br>"
@@ -260,6 +270,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
 {
     CHAPTER.PA_ADD_OPTION(MACRO_FOLDER);
     CHAPTER.PA_ADD_OPTION(START_POINT);
+    CHAPTER.PA_ADD_OPTION(RESTART_GAME);
     CHARACTER_GROUP.PA_ADD_OPTION(CHARACTER);
     CHARACTER_GROUP.PA_ADD_OPTION(CHARACTER_NAME);
 
@@ -3806,6 +3817,49 @@ void AutoStoryBeta::run_flow_step(
 }
 
 
+//  At Home: close the game, start it with the chosen profile, and press A
+//  (title screen, "PRESS A" in every language) until the save has loaded and
+//  the overworld HUD is up. A loaded save always lands on the overworld.
+void AutoStoryBeta::restart_and_load_save(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    env.log("Restarting the game with user profile " + std::to_string((int)PROFILE) + " and loading the save.");
+    env.console.overlay().add_log("Restart game");
+    close_game_from_home(env.console, context);
+    start_game_from_home(
+        env.console, context,
+        ConsoleSettings::instance().TOLERATE_SYSTEM_UPDATE_MENU_FAST,
+        0, PROFILE
+    );
+
+    WallClock start = current_time();
+    WallClock last_press = start;
+    int hud_seen = 0;
+    while (current_time() - start < std::chrono::minutes(3)){
+        context.wait_for_all_requests();
+        if (overworld_hud(env.console.video().snapshot())){
+            if (++hud_seen >= 3){
+                env.log("Save loaded (HUD seen).", COLOR_BLUE);
+                context.wait_for(500ms);
+                return;
+            }
+            context.wait_for(300ms);
+            continue;
+        }
+        hud_seen = 0;
+        //  Title screen / loading: A every 2 seconds (ignored while loading).
+        if (current_time() - last_press > std::chrono::seconds(2)){
+            pbf_press_button(context, BUTTON_A, 100ms, 0ms);
+            last_press = current_time();
+        }
+        context.wait_for(300ms);
+    }
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "restart_and_load_save(): No overworld HUD within 3 minutes of starting the game.",
+        env.console
+    );
+}
+
+
 void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
@@ -3879,30 +3933,40 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
 
     //  Connect the controller.
     const bool from_beginning = start <= StartPoint::CreateCharacter;
+
+    //  Only points that start on the overworld with the party bar have a HUD
+    //  to wait for. The others (before the starter, or on a dialog /
+    //  pre-battle / tutorial / LOOKS screen) get a fixed wait.
+    bool overworld_start = start > StartPoint::ChooseStarter;
+    switch (start){
+    case StartPoint::FirstBattle:
+    case StartPoint::BattleZone:
+    case StartPoint::WaitressBattle:
+    case StartPoint::EscapeBattleZone2:
+    case StartPoint::RivalBattle:
+    case StartPoint::MapTutorial:
+    case StartPoint::BunnelbyCapture:
+    case StartPoint::AfterBunnelby:
+        overworld_start = false;
+        break;
+    default:
+        break;
+    }
+    const bool restart = !from_beginning && RESTART_GAME;
+    if (restart && !overworld_start){
+        throw UserSetupError(
+            env.logger(),
+            "Restart the game first: \"" + std::string(START_POINT.current_display()) + "\" does not start on the overworld, "
+            "so a loaded save cannot be there. Pick the step the save loads at (an earlier one)."
+        );
+    }
+
     if (START_LOCATION.start_in_grip_menu()){
         grip_menu_connect_go_home(context);
-        if (!from_beginning){
+        if (!from_beginning && !restart){
             resume_game_from_home(env.console, context);
             //  The game takes a moment to come back from HOME: button
             //  presses before that are lost and the first macro walks short.
-            //  Only points that start on the overworld with the party bar
-            //  have a HUD to wait for. The others (before the starter, or on
-            //  a dialog / pre-battle / tutorial / LOOKS screen) get a fixed wait.
-            bool overworld_start = start > StartPoint::ChooseStarter;
-            switch (start){
-            case StartPoint::FirstBattle:
-            case StartPoint::BattleZone:
-            case StartPoint::WaitressBattle:
-            case StartPoint::EscapeBattleZone2:
-            case StartPoint::RivalBattle:
-            case StartPoint::MapTutorial:
-            case StartPoint::BunnelbyCapture:
-            case StartPoint::AfterBunnelby:
-                overworld_start = false;
-                break;
-            default:
-                break;
-            }
             if (!overworld_start){
                 env.log("Back in the game. Waiting 3 seconds (this start point has no HUD).");
                 context.wait_for(3000ms);
@@ -3911,13 +3975,16 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
             }else{
                 env.log("Back in the game? No HUD seen in 15 seconds. Starting anyway.", COLOR_RED);
             }
-            context.wait_for(500ms);
         }
     }else{
         require_player(env.console, context, BUTTON_NONE);
-        if (from_beginning){
+        if (from_beginning || restart){
             go_home(env.console, context);
         }
+    }
+
+    if (restart){
+        restart_and_load_save(env, context);
     }
 
     for (size_t c = first; c < steps.size(); c++){

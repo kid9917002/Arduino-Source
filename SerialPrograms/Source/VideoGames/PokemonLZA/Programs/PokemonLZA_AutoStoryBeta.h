@@ -34,6 +34,7 @@ public:
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
 
 private:
+    void restart_and_load_save(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
     void run_flow_step(
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
         const JsonObject& step, size_t index, size_t count

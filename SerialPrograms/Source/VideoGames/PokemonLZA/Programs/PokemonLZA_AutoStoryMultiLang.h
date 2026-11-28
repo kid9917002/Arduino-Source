@@ -305,6 +305,7 @@ protected:
     GroupOption CHAPTER;
     MacroFolderOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
+    BooleanCheckBoxOption RESTART_GAME;
     StartInGripOrGameOption START_LOCATION;
     SimpleIntegerOption<uint8_t> PROFILE;
     EnumDropdownOption<GameLanguage> GAME_LANGUAGE;
