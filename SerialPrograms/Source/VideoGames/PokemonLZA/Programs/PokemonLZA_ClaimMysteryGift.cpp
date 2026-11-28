@@ -544,6 +544,21 @@ bool code_key_position(char ch, int& col, int& row){
     }
     return false;
 }
+//  The code keyboard is up: its dark grey panel (35, 35, 35) at the left
+//  edge and under the keys. Get with Code/Password first shows a white
+//  window that takes A; the cursor check alone took that window for the
+//  keyboard, so the first letter's A closed the window instead (user,
+//  2026-11-28 14:00). User's screenshots: 1.00 / 1.00 on the keyboard, 0.16
+//  or less on everything else.
+bool code_keyboard_open(const ImageViewRGB32& screen){
+    auto panel = [](int r, int g, int b){
+        int mx = std::max(r, std::max(g, b));
+        int mn = std::min(r, std::min(g, b));
+        return mx >= 20 && mx <= 80 && mx - mn <= 10;
+    };
+    return pixel_ratio(screen, ImageFloatBox(0.015, 0.55, 0.020, 0.30), panel) >= 0.80 &&
+        pixel_ratio(screen, ImageFloatBox(0.200, 0.905, 0.600, 0.020), panel) >= 0.80;
+}
 void cursor_to_key(double x, double y, int& col, int& row){
     if (x > 0.85){
         col = KEY_COLUMNS - 1;
@@ -663,7 +678,7 @@ void ClaimMysteryGift::pick_menu_option(SingleSwitchProgramEnvironment& env, Pro
         double y = 0;
         bool there = option == 0
             ? gift_list_on_screen(snapshot)
-            : lza_find_keyboard_cursor(snapshot, x, y);
+            : code_keyboard_open(snapshot) && lza_find_keyboard_cursor(snapshot, x, y);
         if (there){
             if (++seen >= 2){
                 env.log(option == 0 ? "On the Get via Internet list." : "On the code keyboard.", COLOR_BLUE);
@@ -1096,7 +1111,7 @@ void ClaimMysteryGift::claim_via_code(
             menu_seen = 0;
             double x = 0;
             double y = 0;
-            if (lza_find_keyboard_cursor(snapshot, x, y)){
+            if (code_keyboard_open(snapshot) && lza_find_keyboard_cursor(snapshot, x, y)){
                 if (++keyboard_seen >= 3){
                     rejected = true;
                     break;
