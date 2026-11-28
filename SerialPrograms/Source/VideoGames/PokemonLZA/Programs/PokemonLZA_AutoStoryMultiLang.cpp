@@ -3732,7 +3732,10 @@ void AutoStory::run_flow_action(
         }
 
         //  Then, by the screen only (no fixed times, Switch 1 or 2):
-        //   1. black, then the opening video: hold + to skip it,
+        //   0. "登錄完畢" (auto save notice), "PRESENTED BY GAME FREAK" and a
+        //      black loading screen with a light blue spinner at the bottom
+        //      right: wait,
+        //   1. after the loading screen, the opening video: hold + to skip it,
         //   2. loading (black), the narration box at the station, a short
         //      scene: press A,
         //   3. the movement tutorial "?" icon: the player can walk. Done, the
@@ -3744,8 +3747,27 @@ void AutoStory::run_flow_action(
             WallClock playing_since = WallClock::max();
             WallClock last_skip = WallClock::min();
             WallClock last_a = WallClock::min();
-            bool black_seen = false;
+            bool black_seen = false;    //  the loading screen (spinner) was seen
             bool video_done = false;
+            //  Loading screen: black with the light blue spinner at the
+            //  bottom right (the notice and the Game Freak logo before it
+            //  are not black, so the video is only looked for after it).
+            auto loading_spinner = [&](const ImageViewRGB32& screen){
+                ImageViewRGB32 image = extract_box_reference(screen, ImageFloatBox(0.920, 0.880, 0.045, 0.080));
+                size_t hits = 0;
+                size_t total = 0;
+                for (size_t py = 0; py < image.height(); py++){
+                    for (size_t px = 0; px < image.width(); px++){
+                        uint32_t pixel = image.pixel(px, py);
+                        int r = (pixel >> 16) & 0xff;
+                        int g = (pixel >>  8) & 0xff;
+                        int b = (pixel >>  0) & 0xff;
+                        total++;
+                        hits += (b >= 170 && g >= 120 && r <= 120 && b - r >= 80) ? 1 : 0;
+                    }
+                }
+                return total != 0 && (double)hits / (double)total >= 0.08;
+            };
             int skips = 0;
             size_t a_presses = 0;
             bool done = false;
@@ -3766,15 +3788,18 @@ void AutoStory::run_flow_action(
                     if (skips > 0){
                         video_done = true;  //  the video is over: loading
                     }
-                    black_seen = true;
+                    if (!black_seen && loading_spinner(snapshot)){
+                        env.log("Loading screen (spinner). The opening video comes next.");
+                        black_seen = true;
+                    }
                     playing_since = WallClock::max();
                     continue;
                 }
                 if (!video_done){
                     //  The video: not black and no dialog for 1.5 s after the
-                    //  fade (or after 20 s without one).
+                    //  loading screen (or after 60 s without seeing it).
                     const bool playing = !dialog_on_screen(snapshot) &&
-                        (black_seen || current_time() - wait_start > std::chrono::seconds(20));
+                        (black_seen || current_time() - wait_start > std::chrono::seconds(60));
                     if (!playing){
                         playing_since = WallClock::max();
                         continue;
