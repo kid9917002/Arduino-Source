@@ -2608,6 +2608,11 @@ bool find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
             continue;   //  cyan tab label / underline (small). The Switch 1
                         //  frame is cyan too, but key-sized.
         }
+        double fill = (double)count / (double)((bx1 - bx0 + 1) * (by1 - by0 + 1));
+        if (w >= 0.05 && h >= 0.04 && fill > 0.8){
+            continue;   //  a filled key, not the frame: the Switch 1 確定 key
+                        //  turns solid cyan once something is typed
+        }
         found = true;
         min_x = std::min(min_x, bx0);
         max_x = std::max(max_x, bx1);
