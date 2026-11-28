@@ -51,8 +51,8 @@ const char* GIFT_LIST_FILE = "PokemonLZA/MysteryGift/internet_gifts.json";
 //  (OCR language codes: eng, jpn, chi_sim, chi_tra, kor, fra, deu, ita,
 //  spa), to find the checked gifts on the list. Several per language are
 //  fine. Checked on game screens (user's screenshot / game videos): all of
-//  chi_sim, chi_tra, eng, jpn, fra, kor, spa (es-MX; es-ES all but the
-//  Vivillon); ita / deu all but the Vivillon. Those Vivillon titles are
+//  chi_sim, chi_tra, eng, jpn, fra, kor, ita, spa (es-MX; es-ES all but
+//  the Vivillon); deu all but the Vivillon. Those two Vivillon titles are
 //  guesses from news text.
 const char* DEFAULT_GIFT_LIST = R"JSON({
     "gifts": [
@@ -505,8 +505,14 @@ int gift_list_cursor_row(const ImageViewRGB32& screen){
     }
     return gift_list_selected_row(screen);
 }
-//  On the gift list: the cursor row, or the message box over the rows.
+//  On the gift list: the cursor row, or the message box under the rows.
+//  Not the Mystery Gift menu: while connecting, a message box shows under
+//  the menu too and its first row looks filled (2026-11-28 12:32, the
+//  list was taken as there 1 s after A and the run went wrong).
 bool gift_list_on_screen(const ImageViewRGB32& screen){
+    if (mystery_gift_menu_row(screen) >= 0){
+        return false;
+    }
     return gift_list_cursor_row(screen) >= 0 ||
         (gift_list_message_open(screen) && gift_row_filled(screen, 0));
 }
