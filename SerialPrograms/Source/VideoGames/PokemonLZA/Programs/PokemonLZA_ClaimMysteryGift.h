@@ -58,6 +58,7 @@ private:
     );
     //  From the Get via Internet list back to the Mystery Gift menu.
     void back_to_mystery_gift_menu(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
+    void leave_to_overworld(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
     //  Press A through the gift animation and result until the given screen
     //  is back.
     void finish_receiving(

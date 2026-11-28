@@ -28,6 +28,7 @@
 #include "VideoGames/PokemonLZA/PokemonLZA_Settings.h"
 #include "PokemonLZA_GameEntry.h"
 #include "PokemonLZA_MenuNavigation.h"
+#include "VideoGames/PokemonLZA/Inference/PokemonLZA_OverworldPartySelectionDetector.h"
 #include "Pokemon/Pokemon_Strings.h"
 #include "PokemonLZA_ClaimMysteryGift.h"
 
@@ -1116,6 +1117,49 @@ void ClaimMysteryGift::back_to_mystery_gift_menu(SingleSwitchProgramEnvironment&
     );
 }
 
+void ClaimMysteryGift::leave_to_overworld(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+    //  B out of the Mystery Gift menu, Online Play and the main menu. After
+    //  a connection, B on the Mystery Gift menu asks "Disconnect from the
+    //  Internet?" (Yes / No, Yes first): A on Yes (user's screenshot
+    //  2026-11-28 12:04). It looks like "Stop receiving?", so the same
+    //  check finds it.
+    env.log("Leaving the Mystery Gift menu.");
+    OverworldPartySelectionDetector overworld;
+    WallClock start = current_time();
+    WallClock last_press = start - std::chrono::seconds(10);
+    int seen = 0;
+    while (current_time() - start < std::chrono::seconds(60)){
+        context.wait_for_all_requests();
+        VideoSnapshot snapshot = env.console.video().snapshot();
+        if (overworld.detect(snapshot)){
+            if (++seen >= 2){
+                env.log("Back in the overworld.", COLOR_BLUE);
+                return;
+            }
+            context.wait_for(300ms);
+            continue;
+        }
+        seen = 0;
+        if (quit_receiving_yes_selected(snapshot)){
+            env.log("Disconnect from the Internet? -> Yes (A).");
+            pbf_press_button(context, BUTTON_A, 100ms, 100ms);
+            last_press = current_time();
+            context.wait_for(400ms);
+            continue;
+        }
+        if (current_time() - last_press >= std::chrono::milliseconds(1500)){
+            pbf_press_button(context, BUTTON_B, 100ms, 100ms);
+            last_press = current_time();
+        }
+        context.wait_for(200ms);
+    }
+    OperationFailedExceptionWithScreenshot::fire(
+        ErrorReportMode::NO_ERROR_REPORT,
+        "Unable to get back to the overworld from the Mystery Gift menu.",
+        env.console
+    );
+}
+
 void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
@@ -1175,13 +1219,12 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
 
     if (GIFTS.enabled()){
         claim_via_internet(env, context);
-        //  Leave the list ("Stop receiving?" -> Yes) also when no codes
-        //  follow, so the program ends on the Mystery Gift menu.
         back_to_mystery_gift_menu(env, context);
     }
     if (CODE_GROUP.enabled()){
         claim_via_code(env, context, codes);
     }
+    leave_to_overworld(env, context);
 
     send_program_finished_notification(env, NOTIFICATION_PROGRAM_FINISH);
 }
