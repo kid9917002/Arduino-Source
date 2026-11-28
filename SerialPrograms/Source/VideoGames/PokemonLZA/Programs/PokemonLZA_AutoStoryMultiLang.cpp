@@ -3959,7 +3959,7 @@ void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContex
     if (restart && !overworld_start){
         throw UserSetupError(
             env.logger(),
-            "Load save at a step: \"" + std::string(START_POINT.current_display()) + "\" does not start on the overworld, "
+            "Load save at a step: \"" + START_POINT.database().find(START_POINT.current_value())->display + "\" does not start on the overworld, "
             "so a loaded save cannot be there. Pick the step the save loads at (an earlier one)."
         );
     }
