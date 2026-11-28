@@ -1986,7 +1986,11 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
                 && read_camera_heading(snapshot, state.heading);
         }
         state.world = find_world_quest_marker(snapshot, state.world_box);
-        if (outdoors && state.world){
+        //  The distance (OCR, slow) is only read once the marker is near
+        //  the middle: off to the side it is often cut or misread.
+        if (outdoors && state.world &&
+            std::abs(state.world_box.x + state.world_box.width / 2 - 0.5) <= 0.25
+        ){
             state.distance = read_quest_marker_distance(env.logger(), snapshot, state.world_box);
             if (state.distance >= 0){
                 m_last_marker_distance = state.distance;
@@ -2000,6 +2004,8 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
     int best_distance = -1;
     int no_progress = 0;
     int detours = 0;
+    int last_turn_side = 0;
+    double turn_scale = 1.0;
     int no_hud = 0;
     double stick_x = 0;
     double stick_y = 1;
@@ -2043,14 +2049,32 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
             lost = 0;
             double cx = state.world_box.x + state.world_box.width / 2;
             double offset = cx - 0.5;
-            if (std::abs(offset) > 0.04){
-                double push_ms = std::max(40.0, std::min(std::abs(offset) * 450.0, 300.0));
+            if (std::abs(offset) > 0.25){
+                //  Far to the side: turn the camera toward it, in short
+                //  pushes. Turned past it (the side flipped): push half as
+                //  long, so it settles instead of swinging out of view.
+                const int side = offset > 0 ? 1 : -1;
+                if (last_turn_side != 0 && side != last_turn_side){
+                    turn_scale = std::max(0.25, turn_scale * 0.5);
+                }
+                last_turn_side = side;
+                double push_ms = std::max(30.0, std::min(std::abs(offset) * 200.0, 120.0) * turn_scale);
+                env.log(
+                    name + ": turning the camera, marker at x = " + std::to_string(cx) +
+                    ", push " + std::to_string((int)push_ms) + " ms"
+                );
                 pbf_move_right_joystick(
-                    context, {offset > 0 ? 1.0 : -1.0, 0},
+                    context, {(double)side, 0},
                     Milliseconds((int64_t)push_ms), 300ms
                 );
                 continue;
             }
+            last_turn_side = 0;
+            turn_scale = 1.0;
+            //  Near the middle: no camera turn, just walk / run at a slant
+            //  toward it (the marker a bit up-left: go up-left).
+            double slant = std::abs(offset) <= 0.04 ? 0.0 : std::max(-0.6, std::min(offset * 2.5, 0.6));
+            double forward = std::sqrt(1.0 - slant * slant);
 
             //  Far from the marker outdoors: run (B once while moving
             //  forward). Close to it, walk so the prompt is not overshot.
@@ -2064,18 +2088,19 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
             env.log(
                 name + ": marker at x = " + std::to_string(cx) +
                 ", distance " + (state.distance >= 0 ? std::to_string(state.distance) + " m" : std::string("?")) +
-                (run ? ", run " : ", walk ") + std::to_string((int)walk_ms) + " ms"
+                (run ? ", run " : ", walk ") + std::to_string((int)walk_ms) + " ms" +
+                (slant != 0 ? ", slant " + std::to_string(slant) : std::string())
             );
             if (run){
-                pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {0, 1}, {0, 0}, 150ms);
-                pbf_controller_state(context, BUTTON_B, DPAD_NONE, {0, 1}, {0, 0}, 80ms);
-                pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {0, 1}, {0, 0}, Milliseconds((int64_t)walk_ms));
+                pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {slant, forward}, {0, 0}, 150ms);
+                pbf_controller_state(context, BUTTON_B, DPAD_NONE, {slant, forward}, {0, 0}, 80ms);
+                pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {slant, forward}, {0, 0}, Milliseconds((int64_t)walk_ms));
                 pbf_controller_state(context, BUTTON_NONE, DPAD_NONE, {0, 0}, {0, 0}, 200ms);
             }else{
-                pbf_move_left_joystick(context, {0, 1}, Milliseconds((int64_t)walk_ms), 200ms);
+                pbf_move_left_joystick(context, {slant, forward}, Milliseconds((int64_t)walk_ms), 200ms);
             }
-            stick_x = 0;
-            stick_y = 1;
+            stick_x = slant;
+            stick_y = forward;
 
             //  Progress: with a distance, it has to drop below the best so far
             //  (it reads 12 / 13 back and forth while pushing into a fence:
