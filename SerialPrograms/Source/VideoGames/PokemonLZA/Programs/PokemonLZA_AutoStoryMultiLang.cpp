@@ -3778,6 +3778,35 @@ void AutoStory::run_flow_action(
                 }
                 return total != 0 && (double)hits / (double)total >= 0.08;
             };
+            //  The skip prompt of the video, top right: a white "+" button in
+            //  a dark disk with a lime progress ring, then "Skip (hold)" in
+            //  the language of the game. Only the button is read.
+            //  Returns the ring filled (0..1), or -1 if there is no prompt.
+            auto skip_prompt = [&](const ImageViewRGB32& screen) -> double{
+                const double cx = 0.7734 * (double)screen.width();
+                const double cy = 0.1287 * (double)screen.height();
+                const double unit = (double)screen.width() / 1920.0;
+                auto ring = [&](double radius, auto test){
+                    int hits = 0;
+                    for (int i = 0; i < 24; i++){
+                        double a = 2 * 3.14159265358979 * i / 24;
+                        size_t x = (size_t)(cx + radius * unit * std::cos(a));
+                        size_t y = (size_t)(cy + radius * unit * std::sin(a));
+                        if (x >= screen.width() || y >= screen.height()){
+                            continue;
+                        }
+                        uint32_t pixel = screen.pixel(x, y);
+                        hits += test((int)((pixel >> 16) & 0xff), (int)((pixel >> 8) & 0xff), (int)(pixel & 0xff)) ? 1 : 0;
+                    }
+                    return hits / 24.0;
+                };
+                double white = ring(10, [](int r, int g, int b){ return r >= 190 && g >= 190 && b >= 190; });
+                double disk = ring(24, [](int r, int g, int b){ return r <= 110 && g <= 110 && b <= 130 && b >= r; });
+                if (white < 0.75 || disk < 0.75){
+                    return -1;
+                }
+                return ring(38, [](int r, int g, int b){ return g >= 160 && r >= 110 && b <= 120 && g > r; });
+            };
             int skips = 0;
             size_t a_presses = 0;
             bool done = false;
@@ -3833,15 +3862,66 @@ void AutoStory::run_flow_action(
                     }
                     const Milliseconds steady = black_seen ? 600ms : 1500ms;
                     if (current_time() - playing_since >= steady && current_time() - last_skip >= 4000ms){
-                        if (skips >= 3){
+                        if (skips >= 8){
                             env.log("+ did not end the video. Going on with A.", COLOR_RED);
                             video_done = true;
                             continue;
                         }
                         skips++;
-                        env.log("Opening video playing. Holding + to skip it (" + std::to_string(skips) + ").");
-                        pbf_press_button(context, BUTTON_PLUS, 3000ms, 0ms);
+                        //  Tap + to bring up the skip prompt: it shows only
+                        //  while the video plays, so it confirms the video.
+                        pbf_press_button(context, BUTTON_PLUS, 80ms, 0ms);
                         context.wait_for_all_requests();
+                        context.wait_for(400ms);
+                        if (skip_prompt(env.console.video().snapshot()) < 0){
+                            env.log("No skip prompt after +: the video has not started (" + std::to_string(skips) + ").");
+                            last_skip = current_time() - 2500ms;    //  try again in 1.5 s
+                            playing_since = WallClock::max();
+                            continue;
+                        }
+                        //  Hold + (without letting go: the ring starts over)
+                        //  until the prompt and the video are gone.
+                        env.log("Opening video: skip prompt shown. Holding + until it is skipped.", COLOR_BLUE);
+                        WallClock hold_start = current_time();
+                        double filled = 0;
+                        bool skipped = false;
+                        //  The hold is queued ahead of time, 300-600 ms at most,
+                        //  so + is never let go while the screen is read and
+                        //  is let go soon after the video is gone.
+                        WallClock queued_until = hold_start;
+                        while (current_time() - hold_start < std::chrono::seconds(15)){
+                            WallClock now = current_time();
+                            if (queued_until < now){
+                                queued_until = now;
+                            }
+                            if (queued_until - now < 300ms){
+                                Milliseconds more = std::chrono::duration_cast<Milliseconds>(now + 600ms - queued_until);
+                                pbf_controller_state(context, BUTTON_PLUS, DPAD_NONE, {0, 0}, {0, 0}, more);
+                                queued_until += more;
+                            }
+                            context.wait_for(200ms);
+                            VideoSnapshot frame = env.console.video().snapshot();
+                            double ring = skip_prompt(frame);
+                            if (ring >= 0){
+                                filled = std::max(filled, ring);
+                                continue;
+                            }
+                            if (is_black(frame, 80, 40)){
+                                skipped = true;     //  prompt gone, screen black (or loading)
+                                break;
+                            }
+                        }
+                        context.wait_for_all_requests();
+                        env.log(
+                            "Released + after " +
+                            std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(current_time() - hold_start).count()) +
+                            " ms (ring filled " + std::to_string((int)(filled * 100)) + "%)" +
+                            (skipped ? ": video skipped." : ": not skipped yet."),
+                            skipped ? COLOR_BLUE : COLOR_RED
+                        );
+                        if (skipped){
+                            video_done = true;
+                        }
                         last_skip = current_time();
                         playing_since = WallClock::max();
                     }
