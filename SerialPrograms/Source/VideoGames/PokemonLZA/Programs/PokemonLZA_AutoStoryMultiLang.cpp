@@ -3479,7 +3479,7 @@ const char* DEFAULT_STORY_FLOW =
     R"JSON(        { "id": "ZA-05-9 roll tutorial", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "roll-tutorial" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-10 To the hotel door", "macro": "ZA-05-10-Z飯店-翻滾教學結束走向ZA飯店門口.json", "start": "leave-hotel" },)JSON" "\n"
     R"JSON(        { "id": "ZA-05-11 Leave the hotel", "macro": "ZA-05-11-Z飯店-出ZA飯店.json" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-06-1 Walk to the rival", "macro": "ZA-06-1-走向蓋伊對戰.json", "expect": "battle_challenge" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-06-1 Walk to the rival", "macro": "ZA-06-1-走向蓋伊對戰.json", "wait_hud": 20, "expect": "battle_challenge" },)JSON" "\n"
     R"JSON(        { "id": "Rival Battle", "action": "trainer_battle", "start": "urbain-battle" },)JSON" "\n"
     R"JSON(        { "id": "ZA-07 map tutorial", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "map-tutorial" },)JSON" "\n"
     R"JSON(        { "id": "ZA-08-1 Walk to the rocks", "macro": "ZA-08-1-往前走觸發岩石劇情.json", "start": "rock-scene" },)JSON" "\n"
@@ -3522,6 +3522,29 @@ AutoStoryBeta_Descriptor::AutoStoryBeta_Descriptor()
 {}
 
 AutoStoryBeta::AutoStoryBeta(){}
+
+
+//  Wait until the overworld HUD has been on screen for about a second (after
+//  a loading screen, a door or HOME). Returns false after max_wait.
+static bool wait_for_overworld_hud(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    std::chrono::seconds max_wait
+){
+    WallClock wait_start = current_time();
+    int hud_seen = 0;
+    while (current_time() - wait_start < max_wait){
+        context.wait_for(300ms);
+        context.wait_for_all_requests();
+        if (overworld_hud(env.console.video().snapshot())){
+            if (++hud_seen >= 3){
+                return true;
+            }
+        }else{
+            hud_seen = 0;
+        }
+    }
+    return false;
+}
 
 
 void AutoStoryBeta::run_flow_action(
@@ -3692,6 +3715,19 @@ void AutoStoryBeta::run_flow_step(
     m_quest_icon_expected = quest_icon;
     m_battle_challenge_expected = battle_challenge;
 
+    //  "wait_hud": seconds to wait for the overworld HUD before the step
+    //  (after a door / loading screen, which can take longer right after
+    //  the game was started). Button presses during the loading are lost.
+    const int64_t wait_hud = step.get_integer_default("wait_hud", 0);
+    if (wait_hud > 0){
+        if (wait_for_overworld_hud(env, context, std::chrono::seconds(wait_hud))){
+            env.log("HUD seen. Starting " + id + ".");
+        }else{
+            env.log("No HUD within " + std::to_string(wait_hud) + " seconds. Starting " + id + " anyway.", COLOR_RED);
+        }
+        context.wait_for(300ms);
+    }
+
     if (const std::string* macro = step.get_string("macro")){
         run_macro(env, context, *macro);
     }else if (const JsonObject* story = step.get_object("story")){
@@ -3801,25 +3837,11 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
             resume_game_from_home(env.console, context);
             //  The game takes a moment to come back from HOME: button
             //  presses before that are lost and the first macro walks short.
-            //  Wait until the overworld HUD is back (at most 15 seconds).
-            WallClock wait_start = current_time();
-            int hud_seen = 0;
-            while (current_time() - wait_start < std::chrono::seconds(15)){
-                context.wait_for(300ms);
-                context.wait_for_all_requests();
-                if (overworld_hud(env.console.video().snapshot())){
-                    if (++hud_seen >= 3){
-                        break;
-                    }
-                }else{
-                    hud_seen = 0;
-                }
+            if (wait_for_overworld_hud(env, context, std::chrono::seconds(15))){
+                env.log("Back in the game (HUD seen).", COLOR_BLUE);
+            }else{
+                env.log("Back in the game? No HUD seen in 15 seconds. Starting anyway.", COLOR_RED);
             }
-            env.log(hud_seen >= 3
-                ? "Back in the game (HUD seen)."
-                : "Back in the game? No HUD seen in 15 seconds. Starting anyway.",
-                hud_seen >= 3 ? COLOR_BLUE : COLOR_RED
-            );
             context.wait_for(500ms);
         }
     }else{
