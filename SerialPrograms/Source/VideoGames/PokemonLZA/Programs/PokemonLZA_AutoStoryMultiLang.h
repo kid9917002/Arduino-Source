@@ -316,9 +316,8 @@ protected:
     CharacterPortraitOption CHARACTER;
     StringOption CHARACTER_NAME;
     EnumDropdownOption<Starter> STARTER;
-    SectionDividerOption SECTION_BATTLE;
-    BattleAIOption BATTLE_AI;
     SectionDividerOption SECTION_PROGRAM;
+    BattleAIOption BATTLE_AI;
     GoHomeWhenDoneOption GO_HOME_WHEN_DONE;
 
     EventNotificationOption NOTIFICATION_STATUS_UPDATE;

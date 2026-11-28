@@ -249,8 +249,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         LockMode::LOCK_WHILE_RUNNING,
         Starter::Tepig
     )
-    , SECTION_BATTLE("<font size=4><b>Battle</b></font> — how to fight")
-    , SECTION_PROGRAM("<font size=4><b>Program Settings</b></font> — when it is done")
+    , SECTION_PROGRAM("<font size=4><b>Program Settings</b></font> — battles, when it is done, notifications")
     , GO_HOME_WHEN_DONE(false)
     , NOTIFICATION_STATUS_UPDATE("Status Update", true, false, std::chrono::seconds(3600))
     , NOTIFICATIONS({
@@ -272,9 +271,8 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     PA_ADD_OPTION(CHARACTER);
     PA_ADD_OPTION(CHARACTER_NAME);
     PA_ADD_OPTION(STARTER);
-    PA_ADD_STATIC(SECTION_BATTLE);
-    PA_ADD_OPTION(BATTLE_AI);
     PA_ADD_STATIC(SECTION_PROGRAM);
+    PA_ADD_OPTION(BATTLE_AI);
     PA_ADD_OPTION(GO_HOME_WHEN_DONE);
     PA_ADD_OPTION(NOTIFICATIONS);
 
