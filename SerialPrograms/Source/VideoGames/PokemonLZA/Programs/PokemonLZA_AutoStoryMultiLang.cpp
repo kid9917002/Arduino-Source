@@ -249,7 +249,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         LockMode::LOCK_WHILE_RUNNING,
         Starter::Tepig
     )
-    , SECTION_PROGRAM("<font size=4><b>Program Settings</b></font> — battles, when it is done, notifications")
+    , SECTION_PROGRAM("<font size=4><b>Program Settings</b></font>")
     , GO_HOME_WHEN_DONE(false)
     , NOTIFICATION_STATUS_UPDATE("Status Update", true, false, std::chrono::seconds(3600))
     , NOTIFICATIONS({
