@@ -13,7 +13,6 @@
 #include "CommonFramework/Exceptions/OperationFailedExceptionWithScreenshot.h"
 #include "CommonFramework/ImageTools/ImageBoxes.h"
 #include "CommonFramework/GlobalAutoPaths.h"
-#include "Common/Cpp/PrettyPrint.h"
 #include "Common/Cpp/Json/JsonValue.h"
 #include "Common/Cpp/Json/JsonArray.h"
 #include "Common/Cpp/Json/JsonObject.h"
@@ -1178,7 +1177,8 @@ void ClaimMysteryGift::claim_via_code(
         //  the menu, like a received one (2026-11-28 14:16). Only the gift
         //  list tells them apart.
         bool gift_list_seen = false;
-        int dumps = 0;
+        WallClock last_message = current_time();
+        WallClock last_fallback = current_time();
         while (current_time() - start < std::chrono::seconds(180)){
             context.wait_for_all_requests();
             VideoSnapshot snapshot = env.console.video().snapshot();
@@ -1209,6 +1209,13 @@ void ClaimMysteryGift::claim_via_code(
                     continue;
                 }
                 int cursor = gift_list_cursor_row(snapshot);
+                //  Act only with the green arrow up: while the gift is being
+                //  received the list fades to white (rows look filled, no red
+                //  dot), and B went out there (2026-11-28 18:53).
+                if (cursor < 0 || !gift_list_arrow(snapshot, cursor)){
+                    context.wait_for(200ms);
+                    continue;
+                }
                 int rows = 0;
                 while (rows < GIFT_ROW_COUNT && gift_row_filled(snapshot, rows)){
                     rows++;
@@ -1221,6 +1228,7 @@ void ClaimMysteryGift::claim_via_code(
                     }
                 }
                 gift_list_seen = true;
+                last_message = current_time();
                 if (cursor >= 0 && cursor == unclaimed){
                     env.log("Code gift list: receiving row " + std::to_string(cursor + 1) + ".", COLOR_BLUE);
                     //  The row stays up a moment after A: wait, or the next
@@ -1256,15 +1264,28 @@ void ClaimMysteryGift::claim_via_code(
                 continue;
             }
             keyboard_seen = 0;
-            //  After the code's gift: save what is on screen before each
-            //  blind A (Screenshots folder, "code-gift-..."). The menu was
-            //  not recognized there (2026-11-28 14:14 and 18:45) and it goes
-            //  by too fast to catch by hand.
-            if (gift_list_seen && dumps < 15 && snapshot){
-                dumps++;
-                std::string filename = SCREENSHOTS_PATH() + "code-gift-" + now_to_filestring() + ".png";
-                env.log("Saving screenshot to: " + filename + " (menu row = " + std::to_string(mystery_gift_menu_row(snapshot)) + ")");
-                snapshot->save(filename);
+            //  After the code's gift, A only on a message box or a white
+            //  window. After the result card the screen is the bare Mystery
+            //  Gift background for a moment, then the menu: an A in between
+            //  lands on the menu, opens the code keyboard again and types
+            //  "1" (user's screenshots 2026-11-28 18:53). Fallback: A every
+            //  2 s after 4 s with neither.
+            if (gift_list_seen){
+                bool message = gift_list_message_open(snapshot) || white_card_open(snapshot);
+                if (message){
+                    last_message = current_time();
+                }
+                bool fallback = current_time() - last_message >= std::chrono::seconds(4) &&
+                    current_time() - last_fallback >= std::chrono::seconds(2);
+                if (message){
+                    pbf_press_button(context, BUTTON_A, 100ms, 600ms);
+                }else if (fallback){
+                    last_fallback = current_time();
+                    pbf_press_button(context, BUTTON_A, 100ms, 600ms);
+                }else{
+                    context.wait_for(200ms);
+                }
+                continue;
             }
             pbf_press_button(context, BUTTON_A, 100ms, 600ms);
         }
