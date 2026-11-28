@@ -324,6 +324,109 @@ std::string AutoStoryMultiLang::starter_macro_filename() const{
 
 
 
+namespace{
+//  The skip prompt of a video, top right: a white "+" button in a dark
+//  disk with a lime progress ring, then "Skip (hold)" in the language of
+//  the game. Only the button is read.
+//  Returns the ring filled (0..1), or -1 if there is no prompt.
+double skip_prompt_filled(const ImageViewRGB32& screen){
+    const double cx = 0.7734 * (double)screen.width();
+    const double cy = 0.1287 * (double)screen.height();
+    const double unit = (double)screen.width() / 1920.0;
+    auto ring = [&](double radius, auto test){
+        int hits = 0;
+        for (int i = 0; i < 24; i++){
+            double a = 2 * 3.14159265358979 * i / 24;
+            size_t x = (size_t)(cx + radius * unit * std::cos(a));
+            size_t y = (size_t)(cy + radius * unit * std::sin(a));
+            if (x >= screen.width() || y >= screen.height()){
+                continue;
+            }
+            uint32_t pixel = screen.pixel(x, y);
+            hits += test((int)((pixel >> 16) & 0xff), (int)((pixel >> 8) & 0xff), (int)(pixel & 0xff)) ? 1 : 0;
+        }
+        return hits / 24.0;
+    };
+    double white = ring(10, [](int r, int g, int b){ return r >= 190 && g >= 190 && b >= 190; });
+    double disk = ring(24, [](int r, int g, int b){ return r <= 110 && g <= 110 && b <= 130 && b >= r; });
+    if (white < 0.75 || disk < 0.75){
+        return -1;
+    }
+    return ring(38, [](int r, int g, int b){ return g >= 160 && r >= 110 && b <= 120 && g > r; });
+}
+
+//  Skip a video with +: tap + until the skip prompt shows (the video may
+//  start later on a Switch 1), then hold + without letting go until the
+//  prompt is gone. Returns false if no prompt showed within "wait_limit".
+bool hold_plus_through_skip_prompt(
+    SingleSwitchProgramEnvironment& env, ProControllerContext& context,
+    Milliseconds wait_limit
+){
+    context.wait_for_all_requests();
+    WallClock start = current_time();
+    int taps = 0;
+    while (true){
+        VideoSnapshot screen = env.console.video().snapshot();
+        if (skip_prompt_filled(screen) < 0){
+            if (current_time() - start > wait_limit){
+                env.log("No skip prompt after " + std::to_string(taps) + " taps of +. Going on.", COLOR_RED);
+                return false;
+            }
+            if (overworld_hud(screen)){
+                //  Not in the video (yet): + would open the menu here.
+                context.wait_for(500ms);
+                continue;
+            }
+            pbf_press_button(context, BUTTON_PLUS, 80ms, 0ms);
+            context.wait_for_all_requests();
+            taps++;
+            context.wait_for(400ms);
+            if (skip_prompt_filled(env.console.video().snapshot()) < 0){
+                context.wait_for(800ms);
+                continue;
+            }
+        }
+        break;
+    }
+    env.log("Skip prompt shown (" + std::to_string(taps) + " taps). Holding + until it is gone.", COLOR_BLUE);
+    WallClock hold_start = current_time();
+    WallClock queued_until = hold_start;
+    double filled = 0;
+    int gone = 0;
+    while (current_time() - hold_start < std::chrono::seconds(15)){
+        WallClock now = current_time();
+        if (queued_until < now){
+            queued_until = now;
+        }
+        if (queued_until - now < 300ms){
+            Milliseconds more = std::chrono::duration_cast<Milliseconds>(now + 600ms - queued_until);
+            pbf_controller_state(context, BUTTON_PLUS, DPAD_NONE, {0, 0}, {0, 0}, more);
+            queued_until += more;
+        }
+        context.wait_for(200ms);
+        double ring = skip_prompt_filled(env.console.video().snapshot());
+        if (ring >= 0){
+            filled = std::max(filled, ring);
+            gone = 0;
+            continue;
+        }
+        if (++gone >= 2){
+            break;
+        }
+    }
+    context.wait_for_all_requests();
+    env.log(
+        "Released + after " +
+        std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(current_time() - hold_start).count()) +
+        " ms (ring filled " + std::to_string((int)(filled * 100)) + "%)" +
+        (gone >= 2 ? ": skipped." : ": prompt still there."),
+        gone >= 2 ? COLOR_BLUE : COLOR_RED
+    );
+    return gone >= 2;
+}
+}
+
+
 void AutoStoryMultiLang::run_macro(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
     const std::string& filename
@@ -435,9 +538,11 @@ void AutoStoryMultiLang::run_macro(
                 env.log("Recorded + (skip video): on the overworld, so not pressing it.", COLOR_BLUE);
                 context.wait_for(Milliseconds(std::min<int64_t>(hold_ms, 1000)));
             }else{
-                env.log("Recorded + (skip video): holding + for " + std::to_string(hold_ms) + " ms.");
-                pbf_press_button(context, BUTTON_PLUS, Milliseconds(hold_ms), 0ms);
-                context.wait_for_all_requests();
+                //  Not the recorded time: the skip prompt says when the video
+                //  is skipped (Switch 1 and Switch 2 differ). Up to 15 s for
+                //  the video to start.
+                env.log("Recorded + (skip video, " + std::to_string(hold_ms) + " ms): holding + by the skip prompt.");
+                hold_plus_through_skip_prompt(env, context, 15000ms);
             }
             continue;
         }
@@ -3807,31 +3912,7 @@ void AutoStory::run_flow_action(
             //  a dark disk with a lime progress ring, then "Skip (hold)" in
             //  the language of the game. Only the button is read.
             //  Returns the ring filled (0..1), or -1 if there is no prompt.
-            auto skip_prompt = [&](const ImageViewRGB32& screen) -> double{
-                const double cx = 0.7734 * (double)screen.width();
-                const double cy = 0.1287 * (double)screen.height();
-                const double unit = (double)screen.width() / 1920.0;
-                auto ring = [&](double radius, auto test){
-                    int hits = 0;
-                    for (int i = 0; i < 24; i++){
-                        double a = 2 * 3.14159265358979 * i / 24;
-                        size_t x = (size_t)(cx + radius * unit * std::cos(a));
-                        size_t y = (size_t)(cy + radius * unit * std::sin(a));
-                        if (x >= screen.width() || y >= screen.height()){
-                            continue;
-                        }
-                        uint32_t pixel = screen.pixel(x, y);
-                        hits += test((int)((pixel >> 16) & 0xff), (int)((pixel >> 8) & 0xff), (int)(pixel & 0xff)) ? 1 : 0;
-                    }
-                    return hits / 24.0;
-                };
-                double white = ring(10, [](int r, int g, int b){ return r >= 190 && g >= 190 && b >= 190; });
-                double disk = ring(24, [](int r, int g, int b){ return r <= 110 && g <= 110 && b <= 130 && b >= r; });
-                if (white < 0.75 || disk < 0.75){
-                    return -1;
-                }
-                return ring(38, [](int r, int g, int b){ return g >= 160 && r >= 110 && b <= 120 && g > r; });
-            };
+            auto skip_prompt = [](const ImageViewRGB32& screen){ return skip_prompt_filled(screen); };
             int skips = 0;
             size_t a_presses = 0;
             bool done = false;
