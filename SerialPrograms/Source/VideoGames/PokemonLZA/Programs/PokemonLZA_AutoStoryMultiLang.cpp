@@ -4154,17 +4154,19 @@ void AutoStory::run_flow_action(
         }
         //  Help & settings (L) > Options (up, A) > text speed (down) > fast
         //  (right: stays on fast if it is already fast) > back (B, B).
-        pbf_press_button(context, BUTTON_L, 200ms, 600ms);
-        pbf_press_dpad(context, DPAD_UP, 200ms, 300ms);
-        pbf_press_button(context, BUTTON_A, 200ms, 800ms);
-        pbf_press_dpad(context, DPAD_DOWN, 200ms, 300ms);
-        pbf_press_dpad(context, DPAD_RIGHT, 200ms, 300ms);
-        pbf_press_button(context, BUTTON_B, 200ms, 800ms);
-        pbf_press_button(context, BUTTON_B, 200ms, 800ms);
+        //  The gaps are the ones of the Switch 1 macro (250 ms; the Switch 2
+        //  macro had 200 ms), so they work on both.
+        pbf_press_button(context, BUTTON_L, 200ms, 250ms);
+        pbf_press_dpad(context, DPAD_UP, 200ms, 250ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 250ms);
+        pbf_press_dpad(context, DPAD_DOWN, 200ms, 250ms);
+        pbf_press_dpad(context, DPAD_RIGHT, 200ms, 250ms);
+        pbf_press_button(context, BUTTON_B, 200ms, 250ms);
+        pbf_press_button(context, BUTTON_B, 200ms, 250ms);
         //  Report (R) > save (A) > "the report was written" (A).
-        pbf_press_button(context, BUTTON_R, 200ms, 800ms);
+        pbf_press_button(context, BUTTON_R, 200ms, 250ms);
         pbf_press_button(context, BUTTON_A, 200ms, 3200ms);
-        pbf_press_button(context, BUTTON_A, 200ms, 500ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 200ms);
         //  Close the menu (B) until the station screen is back. B again
         //  only when it is still not back after 3 s (on the station B would
         //  roll and the walk would be off).
