@@ -2622,6 +2622,14 @@ bool find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
     if (!found){
         return false;
     }
+    //  The cursor is one key (about 0.08 x 0.10 of the screen). Colorful
+    //  things spread over the screen (the PROFILE screen right after the
+    //  keyboard closes) are not a cursor.
+    if ((double)(max_x - min_x + 1) * STEP / (double)width > 0.15 ||
+        (double)(max_y - min_y + 1) * STEP / (double)height > 0.20
+    ){
+        return false;
+    }
     x = (x0 + (min_x + max_x) / 2.0 * STEP) / (double)width;
     y = (y0 + (min_y + max_y) / 2.0 * STEP) / (double)height;
     return true;
