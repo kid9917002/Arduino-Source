@@ -1023,6 +1023,28 @@ void ClaimMysteryGift::claim_via_code(
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Entering " + what + ".");
 
         pick_menu_option(env, context, 1);
+        //  The keyboard slides up when it opens and takes no input until it
+        //  is in place: the first A of CELEBRATE30TH (the C) was lost there
+        //  (2026-11-28 13:32). Wait until the cursor stays put, then a bit.
+        {
+            double last_x = -1;
+            double last_y = -1;
+            WallClock settle_start = current_time();
+            while (current_time() - settle_start < std::chrono::seconds(5)){
+                context.wait_for_all_requests();
+                double x = 0;
+                double y = 0;
+                if (lza_find_keyboard_cursor(env.console.video().snapshot(), x, y)){
+                    if (std::abs(x - last_x) < 0.005 && std::abs(y - last_y) < 0.005){
+                        break;
+                    }
+                    last_x = x;
+                    last_y = y;
+                }
+                context.wait_for(250ms);
+            }
+            context.wait_for(500ms);
+        }
         for (char ch : code){
             type_key(ch);
         }
