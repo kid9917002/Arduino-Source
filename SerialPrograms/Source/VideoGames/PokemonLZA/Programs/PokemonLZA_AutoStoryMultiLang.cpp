@@ -3705,7 +3705,8 @@ const char* DEFAULT_STORY_FLOW =
     R"JSON(    "flow": [)JSON" "\n"
     R"JSON(        { "id": "ZA-00 Start the game + language", "action": "start_game", "start": "create-character" },)JSON" "\n"
     R"JSON(        { "id": "ZA-00 Character look + name", "action": "create_character", "start": "select-character" },)JSON" "\n"
-    R"JSON(        { "id": "ZA-01 Train station", "macro": "ZA-01-車站.json", "expect": "logo_video", "start": "train-station" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-01 Station menu (text speed, save)", "action": "station_menu", "start": "train-station" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-01 Train station", "macro": "ZA-01-車站.json", "expect": "logo_video" },)JSON" "\n"
     R"JSON(        { "id": "Before chasing Pancham", "action": "before_chasing_pancham", "start": "chase-pancham" },)JSON" "\n"
     R"JSON(        { "id": "ZA-02-0 Chase Pancham", "macro": "ZA-02-0-追頑皮熊貓.json", "expect": "quest_icon" },)JSON" "\n"
     R"JSON(        { "id": "Before choosing the starter", "action": "before_choosing_starter", "start": "choose-starter" },)JSON" "\n"
@@ -4105,6 +4106,83 @@ void AutoStory::run_flow_action(
             pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
         }
         leave_wild_zone(env, context);
+        return;
+    }
+    if (action == "station_menu"){
+        //  At the station, first thing: text speed to fast, then save.
+        //  X opens the menu. The first time on a save the "Report (save)"
+        //  tutorial window comes up over it (a new game), else not (a save
+        //  where the menu was opened before): A only if it is there.
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Station: text speed and save.");
+        //  No Pokemon yet, so no party bar (HUD): the station screen is
+        //  told by the "?" book of the movement tutorial, which stays up
+        //  until the player walks.
+        auto on_station = [&](){
+            VideoSnapshot screen = env.console.video().snapshot();
+            return movement_tutorial_icon(screen) || overworld_hud(screen);
+        };
+        //  X until the station screen is gone (the menu is up). The first
+        //  X can come too early, while the game does not take input yet.
+        for (int x = 0; x < 3; x++){
+            context.wait_for_all_requests();
+            pbf_press_button(context, BUTTON_X, 200ms, 200ms);
+            context.wait_for_all_requests();
+            WallClock menu_wait = current_time();
+            while (current_time() - menu_wait < std::chrono::seconds(3) && on_station()){
+                context.wait_for(200ms);
+            }
+            if (!on_station()){
+                break;
+            }
+            env.log("X did not open the menu yet. X again.");
+        }
+        TutorialWindowDetector tutorial;
+        WallClock tutorial_wait = current_time();
+        int tutorial_a = 0;
+        while (current_time() - tutorial_wait < std::chrono::milliseconds(3000) && tutorial_a < 5){
+            context.wait_for(250ms);
+            if (tutorial.detect(env.console.video().snapshot())){
+                env.log("Menu tutorial window shown: A to close it.");
+                pbf_press_button(context, BUTTON_A, 200ms, 800ms);
+                context.wait_for_all_requests();
+                tutorial_a++;
+                tutorial_wait = current_time() - std::chrono::milliseconds(2000);   //  1 s more to check it is gone
+            }
+        }
+        if (tutorial_a == 0){
+            env.log("No menu tutorial window (the menu was opened before on this save).");
+        }
+        //  Help & settings (L) > Options (up, A) > text speed (down) > fast
+        //  (right: stays on fast if it is already fast) > back (B, B).
+        pbf_press_button(context, BUTTON_L, 200ms, 600ms);
+        pbf_press_dpad(context, DPAD_UP, 200ms, 300ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 800ms);
+        pbf_press_dpad(context, DPAD_DOWN, 200ms, 300ms);
+        pbf_press_dpad(context, DPAD_RIGHT, 200ms, 300ms);
+        pbf_press_button(context, BUTTON_B, 200ms, 800ms);
+        pbf_press_button(context, BUTTON_B, 200ms, 800ms);
+        //  Report (R) > save (A) > "the report was written" (A).
+        pbf_press_button(context, BUTTON_R, 200ms, 800ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 3200ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 500ms);
+        //  Close the menu (B) until the station screen is back. B again
+        //  only when it is still not back after 3 s (on the station B would
+        //  roll and the walk would be off).
+        for (int b = 0; b < 4; b++){
+            pbf_press_button(context, BUTTON_B, 200ms, 300ms);
+            context.wait_for_all_requests();
+            WallClock back_wait = current_time();
+            int seen = 0;
+            while (current_time() - back_wait < std::chrono::seconds(3)){
+                context.wait_for(250ms);
+                seen = on_station() ? seen + 1 : 0;
+                if (seen >= 2){
+                    env.log("Station menu done: back on the station (" + std::to_string(b + 1) + " B).", COLOR_BLUE);
+                    return;
+                }
+            }
+        }
+        env.log("Station screen not back after the menu. Going on.", COLOR_RED);
         return;
     }
     if (action == "walk_to_marker"){
