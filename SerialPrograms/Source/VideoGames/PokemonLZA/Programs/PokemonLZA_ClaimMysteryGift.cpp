@@ -988,6 +988,15 @@ void ClaimMysteryGift::claim_via_code(
             int row = 0;
             read_cursor(col, row);
             if (col == target_col && row == target_row){
+                //  Read again before typing: a wrong first read loses a
+                //  letter.
+                context.wait_for(150ms);
+                int col2 = 0;
+                int row2 = 0;
+                read_cursor(col2, row2);
+                if (col2 != target_col || row2 != target_row){
+                    continue;
+                }
                 pbf_press_button(context, BUTTON_A, 80ms, 320ms);
                 return;
             }
@@ -1030,26 +1039,35 @@ void ClaimMysteryGift::claim_via_code(
 
         pick_menu_option(env, context, 1);
         //  The keyboard slides up when it opens and takes no input until it
-        //  is in place: the first A of CELEBRATE30TH (the C) was lost there
-        //  (2026-11-28 13:32). Wait until the cursor stays put, then a bit.
+        //  is in place. It opens with the cursor on "1" (user's screenshot
+        //  2026-11-28 13:48), but the first reads can be wrong: the first
+        //  letter of CELEBRATE30TH was lost twice (13:32, 13:44; the first
+        //  read said "C"). Wait until "1" is read 3 times in a row (or the
+        //  same key 3 times, up to 5 s), then a bit.
         {
-            double last_x = -1;
-            double last_y = -1;
+            int same = 0;
+            int last_col = -1;
+            int last_row = -1;
             WallClock settle_start = current_time();
             while (current_time() - settle_start < std::chrono::seconds(5)){
                 context.wait_for_all_requests();
                 double x = 0;
                 double y = 0;
                 if (lza_find_keyboard_cursor(env.console.video().snapshot(), x, y)){
-                    if (std::abs(x - last_x) < 0.005 && std::abs(y - last_y) < 0.005){
+                    int col = 0;
+                    int row = 0;
+                    cursor_to_key(x, y, col, row);
+                    same = (col == last_col && row == last_row) ? same + 1 : 1;
+                    last_col = col;
+                    last_row = row;
+                    if (same >= 3 && (col == 0 && row == 0)){
                         break;
                     }
-                    last_x = x;
-                    last_y = y;
                 }
                 context.wait_for(250ms);
             }
-            context.wait_for(500ms);
+            env.log("Keyboard ready: cursor on column " + std::to_string(last_col) + ", row " + std::to_string(last_row) + ".");
+            context.wait_for(300ms);
         }
         for (char ch : code){
             type_key(ch);
