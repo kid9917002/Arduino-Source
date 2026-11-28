@@ -512,8 +512,11 @@ bool gift_list_on_screen(const ImageViewRGB32& screen){
     if (mystery_gift_menu_row(screen) >= 0){
         return false;
     }
+    //  The result card ("... received!") has a white title bar where the
+    //  first row is, but it starts further left (x = 0.252).
     return gift_list_cursor_row(screen) >= 0 ||
-        (gift_list_message_open(screen) && gift_row_filled(screen, 0));
+        (gift_list_message_open(screen) && gift_row_filled(screen, 0) &&
+         white_ratio(screen, ImageFloatBox(0.272, gift_row_top(0) + 0.012, 0.012, 0.042)) < 0.20);
 }
 
 
@@ -1117,9 +1120,15 @@ void ClaimMysteryGift::claim_via_code(
         //  Gift menu. A wrong / used code puts the keyboard back up: leave
         //  it with X and go on with the next code.
         pbf_press_button(context, BUTTON_PLUS, 100ms, 2000ms);
+        //  An accepted code opens a gift list like Get via Internet ("Choose
+        //  the gift to receive." message, the code's gift with the red dot),
+        //  then the result card (user's screenshots 2026-11-28 14:07). On
+        //  the list: A on rows with the red dot, B (then Yes) when none is
+        //  left.
         WallClock start = current_time();
         int menu_seen = 0;
         int keyboard_seen = 0;
+        int list_seen = 0;
         bool ok = false;
         bool rejected = false;
         while (current_time() - start < std::chrono::seconds(180)){
@@ -1135,6 +1144,51 @@ void ClaimMysteryGift::claim_via_code(
                 continue;
             }
             menu_seen = 0;
+            if (quit_receiving_yes_selected(snapshot)){
+                env.log("Code gift list: stop receiving? -> Yes (A).");
+                pbf_press_button(context, BUTTON_A, 100ms, 600ms);
+                continue;
+            }
+            if (gift_list_on_screen(snapshot)){
+                keyboard_seen = 0;
+                if (gift_list_message_open(snapshot)){
+                    pbf_press_button(context, BUTTON_A, 100ms, 600ms);
+                    continue;
+                }
+                int cursor = gift_list_cursor_row(snapshot);
+                int rows = 0;
+                while (rows < GIFT_ROW_COUNT && gift_row_filled(snapshot, rows)){
+                    rows++;
+                }
+                int unclaimed = -1;
+                for (int r = 0; r < rows; r++){
+                    if (gift_row_unclaimed(snapshot, r)){
+                        unclaimed = r;
+                        break;
+                    }
+                }
+                if (cursor >= 0 && cursor == unclaimed){
+                    env.log("Code gift list: receiving row " + std::to_string(cursor + 1) + ".", COLOR_BLUE);
+                    pbf_press_button(context, BUTTON_A, 100ms, 600ms);
+                    list_seen = 0;
+                    continue;
+                }
+                if (cursor >= 0 && unclaimed >= 0){
+                    pbf_press_dpad(context, cursor < unclaimed ? DPAD_DOWN : DPAD_UP, 150ms, 400ms);
+                    continue;
+                }
+                //  Nothing left to receive: leave the list (twice in a row
+                //  to be sure it is the list).
+                if (++list_seen >= 2){
+                    env.log("Code gift list: nothing left. Leaving it (B).");
+                    pbf_press_button(context, BUTTON_B, 100ms, 900ms);
+                    list_seen = 0;
+                }else{
+                    context.wait_for(300ms);
+                }
+                continue;
+            }
+            list_seen = 0;
             double x = 0;
             double y = 0;
             if (code_keyboard_open(snapshot) && lza_find_keyboard_cursor(snapshot, x, y)){
