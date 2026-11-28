@@ -1983,25 +1983,14 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
     int lost = 0;
     int stuck = 0;
     int no_hud = 0;
-    int dialog_with_hud = 0;
     double stick_x = 0;
     double stick_y = 1;
 
     for (int step = 0; step < 200; step++){
         State state = read_state();
-        if (state.dialog){
-            //  The HUD hides while a dialog is up. With the HUD still on
-            //  screen the player can move: most likely a false "dialog"
-            //  (signs, shop fronts...). Keep walking unless it stays.
-            if (state.hud && ++dialog_with_hud < 3){
-                env.log("Dialog-like screen but the HUD is up. Ignoring it (" + std::to_string(dialog_with_hud) + ").", COLOR_RED);
-            }else{
-                env.log("Dialog on the way to " + name + ".");
-                return WalkResult::Dialog;
-            }
-        }else{
-            dialog_with_hud = 0;
-        }
+        //  Only the HUD says whether the player can move: while it is up,
+        //  keep walking to the marker (a "dialog" read with the HUD up is a
+        //  false hit: signs, shop fronts...). The story / a dialog hides it.
         if (!state.hud){
             //  The HUD goes away when a story scene starts (and some dialog
             //  boxes have no fixed shape). Two reads in a row to be sure.
