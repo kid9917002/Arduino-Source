@@ -1135,6 +1135,10 @@ void ClaimMysteryGift::claim_via_code(
         //  the code keyboard again, which then reads as "not accepted"
         //  (2026-11-28 14:14: the gift was received, then reported so).
         WallClock last_menu = start - std::chrono::seconds(10);
+        //  A used code shows a white "used already" window and goes back to
+        //  the menu, like a received one (2026-11-28 14:16). Only the gift
+        //  list tells them apart.
+        bool gift_list_seen = false;
         while (current_time() - start < std::chrono::seconds(180)){
             context.wait_for_all_requests();
             VideoSnapshot snapshot = env.console.video().snapshot();
@@ -1176,6 +1180,7 @@ void ClaimMysteryGift::claim_via_code(
                         break;
                     }
                 }
+                gift_list_seen = true;
                 if (cursor >= 0 && cursor == unclaimed){
                     env.log("Code gift list: receiving row " + std::to_string(cursor + 1) + ".", COLOR_BLUE);
                     //  The row stays up a moment after A: wait, or the next
@@ -1234,6 +1239,11 @@ void ClaimMysteryGift::claim_via_code(
                 "Did not get back from " + what + " within 3 minutes.",
                 env.console
             );
+        }
+        if (!gift_list_seen){
+            env.log("Code " + code + ": back on the menu without a gift (used already or expired).", COLOR_RED);
+            failed += (failed.empty() ? "" : ", ") + code;
+            continue;
         }
         env.log("Received: " + what, COLOR_BLUE);
         received++;
