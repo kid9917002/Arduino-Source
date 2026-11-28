@@ -13,6 +13,7 @@
 #include "CommonFramework/Exceptions/OperationFailedExceptionWithScreenshot.h"
 #include "CommonFramework/ImageTools/ImageBoxes.h"
 #include "CommonFramework/GlobalAutoPaths.h"
+#include "Common/Cpp/PrettyPrint.h"
 #include "Common/Cpp/Json/JsonValue.h"
 #include "Common/Cpp/Json/JsonArray.h"
 #include "Common/Cpp/Json/JsonObject.h"
@@ -1177,6 +1178,7 @@ void ClaimMysteryGift::claim_via_code(
         //  the menu, like a received one (2026-11-28 14:16). Only the gift
         //  list tells them apart.
         bool gift_list_seen = false;
+        int dumps = 0;
         while (current_time() - start < std::chrono::seconds(180)){
             context.wait_for_all_requests();
             VideoSnapshot snapshot = env.console.video().snapshot();
@@ -1254,6 +1256,16 @@ void ClaimMysteryGift::claim_via_code(
                 continue;
             }
             keyboard_seen = 0;
+            //  After the code's gift: save what is on screen before each
+            //  blind A (Screenshots folder, "code-gift-..."). The menu was
+            //  not recognized there (2026-11-28 14:14 and 18:45) and it goes
+            //  by too fast to catch by hand.
+            if (gift_list_seen && dumps < 15 && snapshot){
+                dumps++;
+                std::string filename = SCREENSHOTS_PATH() + "code-gift-" + now_to_filestring() + ".png";
+                env.log("Saving screenshot to: " + filename + " (menu row = " + std::to_string(mystery_gift_menu_row(snapshot)) + ")");
+                snapshot->save(filename);
+            }
             pbf_press_button(context, BUTTON_A, 100ms, 600ms);
         }
         if (rejected){
