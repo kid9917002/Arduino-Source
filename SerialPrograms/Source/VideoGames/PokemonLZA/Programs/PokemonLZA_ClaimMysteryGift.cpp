@@ -550,6 +550,15 @@ bool code_key_position(char ch, int& col, int& row){
 //  keyboard, so the first letter's A closed the window instead (user,
 //  2026-11-28 14:00). User's screenshots: 1.00 / 1.00 on the keyboard, 0.16
 //  or less on everything else.
+//  A white message window in the middle ("Note!" before the code
+//  keyboard, "received already", "code used"): white at three corners
+//  inside it, x = 0.19 to 0.81, y = 0.14 to 0.86. User's screenshots:
+//  1.00 on those windows, 0.25 or less on everything else.
+bool white_card_open(const ImageViewRGB32& screen){
+    return white_ratio(screen, ImageFloatBox(0.20, 0.17, 0.08, 0.07)) >= 0.80 &&
+        white_ratio(screen, ImageFloatBox(0.72, 0.17, 0.07, 0.07)) >= 0.80 &&
+        white_ratio(screen, ImageFloatBox(0.20, 0.72, 0.08, 0.07)) >= 0.80;
+}
 bool code_keyboard_open(const ImageViewRGB32& screen){
     auto panel = [](int r, int g, int b){
         int mx = std::max(r, std::max(g, b));
@@ -688,6 +697,23 @@ void ClaimMysteryGift::pick_menu_option(SingleSwitchProgramEnvironment& env, Pro
             continue;
         }
         seen = 0;
+        //  Code: the keyboard opens right away, except after a restart of
+        //  the game, when a white "Note!" window comes first (user,
+        //  2026-11-28). A blind A as the keyboard opens would type "1", so
+        //  press A only on a white window (or, as a fallback, every 2 s
+        //  after 4 s with neither).
+        if (option != 0){
+            bool card = white_card_open(snapshot);
+            bool fallback = current_time() - start >= std::chrono::seconds(4) &&
+                current_time() - last_press >= std::chrono::seconds(2);
+            if ((card && current_time() - last_press >= std::chrono::milliseconds(700)) || fallback){
+                env.log(card ? "Code: closing the white window (A)." : "Code: no keyboard yet (A).");
+                pbf_press_button(context, BUTTON_A, 100ms, 100ms);
+                last_press = current_time();
+            }
+            context.wait_for(250ms);
+            continue;
+        }
         //  Blind A every 0.7 s (as Auto Story's clear_dialogs).
         if (current_time() - last_press >= std::chrono::milliseconds(700)){
             pbf_press_button(context, BUTTON_A, 100ms, 100ms);
