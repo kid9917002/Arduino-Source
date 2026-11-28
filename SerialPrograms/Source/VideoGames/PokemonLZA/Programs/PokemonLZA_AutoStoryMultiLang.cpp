@@ -3753,10 +3753,11 @@ void AutoStory::run_flow_action(
         {
             WallClock wait_start = current_time();
             WallClock playing_since = WallClock::max();
-            WallClock last_skip = WallClock::min();
-            WallClock last_a = WallClock::min();
+            //  ("now - WallClock::min()" overflows and never passes a check.)
+            WallClock last_skip = wait_start - std::chrono::hours(1);
+            WallClock last_a = wait_start - std::chrono::hours(1);
             bool black_seen = false;    //  the loading screen (spinner) was seen
-            WallClock spinner_last = WallClock::min();
+            WallClock spinner_last = wait_start - std::chrono::hours(1);
             bool video_done = false;
             //  Loading screen: black with the light blue spinner at the
             //  bottom right (the notice and the Game Freak logo before it
