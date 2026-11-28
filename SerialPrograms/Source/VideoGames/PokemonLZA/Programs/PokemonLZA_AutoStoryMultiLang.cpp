@@ -3756,6 +3756,7 @@ void AutoStory::run_flow_action(
             WallClock last_skip = WallClock::min();
             WallClock last_a = WallClock::min();
             bool black_seen = false;    //  the loading screen (spinner) was seen
+            WallClock spinner_last = WallClock::min();
             bool video_done = false;
             //  Loading screen: black with the light blue spinner at the
             //  bottom right (the notice and the Game Freak logo before it
@@ -3792,22 +3793,29 @@ void AutoStory::run_flow_action(
                     break;
                 }
                 const bool black = is_black(snapshot, 80, 40);
-                if (black){
-                    if (skips > 0){
-                        video_done = true;  //  the video is over: loading
-                    }
-                    if (!black_seen && loading_spinner(snapshot)){
+                const bool spinner = black && loading_spinner(snapshot);
+                if (spinner){
+                    if (!black_seen){
                         env.log("Loading screen (spinner). The opening video comes next.");
-                        black_seen = true;
                     }
-                    playing_since = WallClock::max();
-                    continue;
+                    black_seen = true;
+                    spinner_last = current_time();
+                }
+                if (black && skips > 0){
+                    video_done = true;  //  the video is over: loading
                 }
                 if (!video_done){
-                    //  The video: not black and no dialog for 1.5 s after the
-                    //  loading screen (or after 60 s without seeing it).
-                    const bool playing = !dialog_on_screen(snapshot) &&
-                        (black_seen || current_time() - wait_start > std::chrono::seconds(60));
+                    //  The video starts as soon as the loading screen is gone
+                    //  (its first frames fade in from black, so "black" does
+                    //  not mean "still loading": only the spinner does).
+                    //  Without the spinner in 60 s: not black and no dialog.
+                    bool playing;
+                    if (black_seen){
+                        playing = !spinner && current_time() - spinner_last >= 1500ms;
+                    }else{
+                        playing = current_time() - wait_start > std::chrono::seconds(60) &&
+                            !black && !dialog_on_screen(snapshot);
+                    }
                     if (!playing){
                         playing_since = WallClock::max();
                         continue;
@@ -3815,7 +3823,8 @@ void AutoStory::run_flow_action(
                     if (playing_since == WallClock::max()){
                         playing_since = current_time();
                     }
-                    if (current_time() - playing_since >= 1500ms && current_time() - last_skip >= 4000ms){
+                    const Milliseconds steady = black_seen ? 0ms : 1500ms;
+                    if (current_time() - playing_since >= steady && current_time() - last_skip >= 4000ms){
                         if (skips >= 3){
                             env.log("+ did not end the video. Going on with A.", COLOR_RED);
                             video_done = true;
@@ -3828,6 +3837,9 @@ void AutoStory::run_flow_action(
                         last_skip = current_time();
                         playing_since = WallClock::max();
                     }
+                    continue;
+                }
+                if (black){
                     continue;
                 }
                 //  After the video: the narration box and the short scene.
