@@ -3698,10 +3698,38 @@ void AutoStory::run_flow_action(
 
         //  After the name: pick the upper answer of the confirmation, then
         //  skip the opening video.
-        pbf_wait(context, 1000ms);
-        pbf_press_dpad(context, DPAD_UP, 200ms, 200ms);
-        pbf_press_button(context, BUTTON_A, 200ms, 0ms);
-        context.wait_for_all_requests();
+        //  PROFILE screen ("確定要以此登錄嗎？"): the cursor starts on the
+        //  hair color row; up (wraps around) moves it to "以此開始遊戲！",
+        //  which turns white. Then A starts the game.
+        {
+            auto start_selected = [&](const ImageViewRGB32& screen){
+                //  Plain parts of the start button, left and right of the text.
+                for (double x : {0.090, 0.340}){
+                    ImageStats stats = image_stats(extract_box_reference(screen, ImageFloatBox(x, 0.745, 0.035, 0.080)));
+                    if (stats.average.sum() < 650 || stats.stddev.sum() > 40){
+                        return false;
+                    }
+                }
+                return true;
+            };
+            pbf_wait(context, 1000ms);
+            bool selected = false;
+            for (int c = 0; c < 10; c++){
+                context.wait_for_all_requests();
+                if (start_selected(env.console.video().snapshot())){
+                    selected = true;
+                    break;
+                }
+                pbf_press_dpad(context, DPAD_UP, 200ms, 500ms);
+            }
+            if (selected){
+                env.log("PROFILE: \"start the game\" selected. Pressing A.", COLOR_BLUE);
+            }else{
+                env.log("PROFILE: the start button was not recognized. Pressing A anyway.", COLOR_RED);
+            }
+            pbf_press_button(context, BUTTON_A, 200ms, 0ms);
+            context.wait_for_all_requests();
+        }
 
         //  Then, by the screen only (no fixed times, Switch 1 or 2):
         //   1. black, then the opening video: hold + to skip it,
