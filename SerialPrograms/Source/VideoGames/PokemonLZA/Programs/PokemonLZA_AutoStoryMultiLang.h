@@ -291,6 +291,8 @@ protected:
         SingleSwitchProgramEnvironment& env, ProControllerContext& context,
         const std::string& name, bool outdoors
     );
+    //  The last distance (m) read by walk_to_quest_marker(), -1 if none.
+    int m_last_marker_distance = -1;
 
     void walk_to_lab(SingleSwitchProgramEnvironment& env, ProControllerContext& context);
     void take_lab_elevator(SingleSwitchProgramEnvironment& env, ProControllerContext& context);

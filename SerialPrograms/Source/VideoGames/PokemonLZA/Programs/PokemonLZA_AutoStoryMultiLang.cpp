@@ -1942,6 +1942,7 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
     const std::string& name, bool outdoors
 ){
     env.log("Walking to the quest marker: " + name);
+    m_last_marker_distance = -1;
     env.console.overlay().add_log("Go to " + name);
 
     const double PI = 3.14159265358979323846;
@@ -1972,6 +1973,9 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
         state.world = find_world_quest_marker(snapshot, state.world_box);
         if (outdoors && state.world){
             state.distance = read_quest_marker_distance(env.logger(), snapshot, state.world_box);
+            if (state.distance >= 0){
+                m_last_marker_distance = state.distance;
+            }
         }
         return state;
     };
@@ -3652,11 +3656,42 @@ void AutoStoryBeta::run_flow_action(
         //  "outdoors" (default true: read the distance, run when far).
         const std::string marker = step.get_string_default("marker", id.c_str());
         const bool outdoors = step.get_boolean_default("outdoors", true);
+        //  "story_within": a dialog farther than this (m) from the marker is
+        //  someone on the street (a trainer, a shop): back out with B and
+        //  keep walking. Default 20.
+        const int story_within = (int)step.get_integer_default("story_within", 20);
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to " + marker + ".");
-        if (walk_to_quest_marker(env, context, marker, outdoors) == WalkResult::Prompt){
-            pbf_press_button(context, BUTTON_A, 100ms, 400ms);
+        for (int interruptions = 0; ; interruptions++){
+            WalkResult result = walk_to_quest_marker(env, context, marker, outdoors);
+            if (result == WalkResult::Prompt){
+                pbf_press_button(context, BUTTON_A, 100ms, 400ms);
+                return;
+            }
+            if (!outdoors || m_last_marker_distance < 0 || m_last_marker_distance <= story_within || interruptions >= 5){
+                return;
+            }
+            env.log(
+                "Dialog " + std::to_string(m_last_marker_distance) + " m from " + marker +
+                ": not the story (someone on the street). Backing out with B.",
+                COLOR_RED
+            );
+            //  B closes the talk / picks "no", without starting anything.
+            WallClock back_start = current_time();
+            WallClock quiet_since = back_start;
+            while (current_time() - back_start < std::chrono::seconds(30)){
+                context.wait_for_all_requests();
+                VideoSnapshot snapshot = env.console.video().snapshot();
+                if (dialog_on_screen(snapshot) || !overworld_hud(snapshot)){
+                    pbf_press_button(context, BUTTON_B, 100ms, 400ms);
+                    quiet_since = current_time();
+                    continue;
+                }
+                if (current_time() - quiet_since > std::chrono::milliseconds(1500)){
+                    break;
+                }
+                context.wait_for(200ms);
+            }
         }
-        return;
     }
     if (action == "walk_to_lab"){
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to the lab.");
