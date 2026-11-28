@@ -39,18 +39,25 @@ bool is_dark_navy(const ImageViewRGB32& screen, const ImageFloatBox& box){
 TutorialWindowDetector::TutorialWindowDetector(Color color)
     : m_color(color)
     , m_panel(0.55, 0.50, 0.15, 0.30)
+    , m_panel_edge(0.715, 0.50, 0.015, 0.40)
     , m_header(0.50, 0.085, 0.20, 0.05)
     , m_margin_left(0.03, 0.30, 0.15, 0.40)
     , m_margin_right(0.80, 0.30, 0.15, 0.40)
 {}
 void TutorialWindowDetector::make_overlays(VideoOverlaySet& items) const{
     items.add(m_color, m_panel);
+    items.add(m_color, m_panel_edge);
     items.add(m_color, m_header);
     items.add(m_color, m_margin_left);
     items.add(m_color, m_margin_right);
 }
 bool TutorialWindowDetector::detect(const ImageViewRGB32& screen){
-    if (!is_white(extract_box_reference(screen, m_panel), 650, 40)){
+    //  The middle of the card can have text in it (long lines in some
+    //  languages, e.g. Italian). The strip along its right edge is always
+    //  blank, so either one being plain white is enough.
+    if (!is_white(extract_box_reference(screen, m_panel), 650, 40) &&
+        !is_white(extract_box_reference(screen, m_panel_edge), 650, 40)
+    ){
         return false;
     }
     if (!is_dark_navy(screen, m_header)){
