@@ -23,7 +23,7 @@
 
 //  Story Automation
 #include "Programs/PokemonLZA_AutoStoryMultiLang.h"
-#include "Programs/PokemonLZA_AutoStoryBeta.h"
+#include "Programs/PokemonLZA_AutoStory.h"
 #include "Programs/PokemonLZA_ClaimMysteryGift.h"
 
 //  Trading
@@ -121,7 +121,7 @@ std::vector<PanelEntry> PanelListFactory::make_panels() const{
     }
 
     ret.emplace_back("---- Story Automation ----");
-    ret.emplace_back(make_SingleSwitchProgram<AutoStoryBeta>());
+    ret.emplace_back(make_SingleSwitchProgram<AutoStory>());
     ret.emplace_back(make_SingleSwitchProgram<ClaimMysteryGift>());
 
 //    ret.emplace_back("---- Non-Shiny Hunting ----");

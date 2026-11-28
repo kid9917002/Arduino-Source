@@ -2239,8 +2239,12 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_HyperspaceRewardTable.h
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_ShinyDetectedAction.cpp
     Source/VideoGames/PokemonLZA/Options/PokemonLZA_ShinyDetectedAction.h
+    Source/VideoGames/PokemonLZA/Options/PokemonLZA_StartModeOption.cpp
+    Source/VideoGames/PokemonLZA/Options/PokemonLZA_StartModeOption.h
     Source/VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_CharacterPortraitWidget.cpp
     Source/VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_CharacterPortraitWidget.h
+    Source/VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_StartModeWidget.cpp
+    Source/VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_StartModeWidget.h
     Source/VideoGames/PokemonLZA/PokemonLZA_Panels.cpp
     Source/VideoGames/PokemonLZA/PokemonLZA_Panels.h
     Source/VideoGames/PokemonLZA/PokemonLZA_Settings.cpp
@@ -2267,7 +2271,7 @@ file(GLOB LIBRARY_SOURCES
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_StatsReset.h
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_WeatherFinder.cpp
     Source/VideoGames/PokemonLZA/Programs/NonShinyHunting/PokemonLZA_WeatherFinder.h
-    Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryBeta.h
+    Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStory.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryMultiLang.cpp
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_AutoStoryMultiLang.h
     Source/VideoGames/PokemonLZA/Programs/PokemonLZA_ChineseReadings.cpp

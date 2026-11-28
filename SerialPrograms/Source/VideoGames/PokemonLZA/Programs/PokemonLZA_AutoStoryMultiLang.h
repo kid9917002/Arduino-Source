@@ -39,6 +39,8 @@
 #include "CommonFramework/Language.h"
 #include "Common/Cpp/Options/EnumDropdownOption.h"
 #include "VideoGames/PokemonLZA/Options/PokemonLZA_CharacterPortraitOption.h"
+#include "VideoGames/PokemonLZA/Options/PokemonLZA_StartModeOption.h"
+#include "Common/Cpp/Options/StaticTextOption.h"
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
 #include "NintendoSwitch/Options/NintendoSwitch_GoHomeWhenDoneOption.h"
@@ -52,7 +54,7 @@ namespace PokemonLZA{
 class AutoStoryMultiLang_Descriptor : public SingleSwitchProgramDescriptor{
 public:
     AutoStoryMultiLang_Descriptor();
-    //  For programs built on this one (Auto Story (Beta)).
+    //  For programs built on this one (Auto Story).
     AutoStoryMultiLang_Descriptor(
         std::string identifier, std::string display_name, std::string description
     );
@@ -89,7 +91,7 @@ public:
 
     virtual void on_config_value_changed(void* object) override;
 
-    //  Only Auto Story (AutoStoryBeta, story_flow.json) runs this class.
+    //  Only Auto Story (AutoStory, story_flow.json) runs this class.
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override = 0;
 
 
@@ -228,7 +230,7 @@ protected:
     //  they end on the "... wants to battle!" text, and the battle code takes
     //  over from there.
     bool m_battle_challenge_expected = false;
-    //  Quiet times set by Auto Story (Beta) for the dialogs inside one of
+    //  Quiet times set by Auto Story for the dialogs inside one of
     //  its steps. Checked before story_dialog.json. Empty in Auto Story.
     std::map<std::string, Milliseconds> m_quiet_overrides;
 
@@ -301,19 +303,22 @@ protected:
 
 
 protected:
-    BooleanCheckBoxOption FULL_GAME;
-    GroupOption CHAPTER;
+    SectionDividerOption SECTION_START;
+    StartInGripOrGameOption START_LOCATION;
+    StartModeOption START_MODE;
+    SectionDividerOption SECTION_CHAPTER;
     MacroFolderOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
-    BooleanCheckBoxOption RESTART_GAME;
-    StartInGripOrGameOption START_LOCATION;
+    SectionDividerOption SECTION_GAME;
     SimpleIntegerOption<uint8_t> PROFILE;
     EnumDropdownOption<GameLanguage> GAME_LANGUAGE;
-    StringOption CHARACTER_NAME;
-    GroupOption CHARACTER_GROUP;
+    StaticTextOption NEW_SAVE_NOTE;
     CharacterPortraitOption CHARACTER;
+    StringOption CHARACTER_NAME;
     EnumDropdownOption<Starter> STARTER;
+    SectionDividerOption SECTION_BATTLE;
     BattleAIOption BATTLE_AI;
+    SectionDividerOption SECTION_PROGRAM;
     GoHomeWhenDoneOption GO_HOME_WHEN_DONE;
 
     EventNotificationOption NOTIFICATION_STATUS_UPDATE;

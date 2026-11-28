@@ -66,6 +66,7 @@
 //  Nintendo Switch
 #include "VideoGames/PokemonLA/Options/QtWidgets/PokemonLA_CustomPathTableWidget.h"
 #include "VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_CharacterPortraitWidget.h"
+#include "VideoGames/PokemonLZA/Options/QtWidgets/PokemonLZA_StartModeWidget.h"
 //#include "NintendoSwitch/Framework/UI/NintendoSwitch_SingleSwitchProgramWidget.h"
 
 //  Pokemon LA
@@ -159,6 +160,7 @@ void register_all_statics(){
 
     //  Pokemon LZA
     RegisterUiStateQtWidget<NintendoSwitch::PokemonLZA::CharacterPortraitWidget>();
+    RegisterUiStateQtWidget<NintendoSwitch::PokemonLZA::StartModeWidget>();
 }
 
 

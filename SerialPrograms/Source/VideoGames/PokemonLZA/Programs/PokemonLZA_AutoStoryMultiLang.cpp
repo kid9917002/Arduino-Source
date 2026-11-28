@@ -44,7 +44,7 @@
 #include "VideoGames/PokemonLZA/Programs/PokemonLZA_TrainerBattle.h"
 #include "PokemonLZA_ChineseReadings.h"
 #include "PokemonLZA_AutoStoryMultiLang.h"
-#include "PokemonLZA_AutoStoryBeta.h"
+#include "PokemonLZA_AutoStory.h"
 
 namespace PokemonAutomation{
 namespace NintendoSwitch{
@@ -133,22 +133,20 @@ std::unique_ptr<StatsTracker> AutoStoryMultiLang_Descriptor::make_stats() const{
 
 
 AutoStoryMultiLang::~AutoStoryMultiLang(){
-    FULL_GAME.remove_listener(*this);
+    START_POINT.remove_listener(*this);
+    START_MODE.remove_listener(*this);
 }
 AutoStoryMultiLang::AutoStoryMultiLang()
-    : FULL_GAME(
-        "<b>Start from New Game:</b><br>"
-        "Close the game, start it again with the user profile below and play the whole story from a new save (ZA-00), "
-        "with the macros in Resources\\PokemonLZA\\AutoStory of the program folder. The profile must have no save data. "
-        "Uncheck to pick the macro folder and the step to start from.",
-        LockMode::LOCK_WHILE_RUNNING,
-        false
+    : SECTION_START("<font size=4><b>Start</b></font> — how the run starts")
+    , START_MODE(
+        "<b>Start Mode:</b>",
+        StartModeOption::CONTINUE
     )
-    , CHAPTER("Chapter", LockMode::LOCK_WHILE_RUNNING)
+    , SECTION_CHAPTER("<font size=4><b>Chapter</b></font> — which macros, from which step")
     , MACRO_FOLDER(
         false,
         "<b>Macro Folder:</b><br>"
-        "Folder that contains the Turbo Macro JSON files, story_dialog.json and story_flow.json. "
+        "Folder that contains story_flow.json and the Turbo Macro JSON files. "
         "Default: Resources\\PokemonLZA\\AutoStory of the program folder.",
         LockMode::LOCK_WHILE_RUNNING,
         "Resources/PokemonLZA/AutoStory",
@@ -156,8 +154,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     )
     , START_POINT(
         "<b>Start From:</b><br>"
-        "Which step to start at. The game must already be on the screen that step starts from "
-        "(or check \"Restart the game first\" to load the save at that step).",
+        "Which step to start at (Load save at a step / Continue from screen).",
         {
             {StartPoint::CreateCharacter, "create-character", "ZA-00 Start the game + language (beginning, from Home)"},
             {StartPoint::SelectCharacter, "select-character", "ZA-00 LOOKS screen (pick character)"},
@@ -197,19 +194,11 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
-    , RESTART_GAME(
-        "<b>Restart the game first:</b><br>"
-        "Close the game, start it again with the user profile above, load the save (A on the title screen) "
-        "and start at the step above once the overworld HUD is up. The game does not need to be running. "
-        "Pick the step the save loads at (e.g. ZA-05-10 after the roll tutorial save): "
-        "only steps that start on the overworld.",
-        LockMode::LOCK_WHILE_RUNNING,
-        false
-    )
+    , SECTION_GAME("<font size=4><b>Game Information</b></font> — user profile, language, character")
     , PROFILE(
         "<b>User Profile Position:</b><br>"
         "The position, from left to right, of the Switch user profile to start the game with "
-        "(only used when starting from ZA-00 Create character).<br>"
+        "(New game, Load save at a step).<br>"
         "If this is set to 0, Switch 1 defaults to the last-used profile, while Switch 2 defaults to the first profile (position 1).",
         LockMode::LOCK_WHILE_RUNNING,
         0, 0, 8 // default, min, max
@@ -232,6 +221,12 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         LockMode::LOCK_WHILE_RUNNING,
         GameLanguage::ChineseTraditional
     )
+    , NEW_SAVE_NOTE("<i>Only for a new save (greyed out when the run starts after that point):</i>")
+    , CHARACTER(
+        "<b>Character Look:</b><br>"
+        "Click the portrait to pick on the LOOKS screen.",
+        2
+    )
     , CHARACTER_NAME(
         false,
         "<b>Character Name:</b><br>"
@@ -244,12 +239,6 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         "塔霓",
         "塔霓"
     )
-    , CHARACTER_GROUP("Character", LockMode::LOCK_WHILE_RUNNING)
-    , CHARACTER(
-        "<b>Character Look:</b><br>"
-        "Click the portrait to pick on the LOOKS screen.",
-        2
-    )
     , STARTER(
         "<b>Starter:</b>",
         {
@@ -260,6 +249,8 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         LockMode::LOCK_WHILE_RUNNING,
         Starter::Tepig
     )
+    , SECTION_BATTLE("<font size=4><b>Battle</b></font> — how to fight")
+    , SECTION_PROGRAM("<font size=4><b>Program Settings</b></font> — when it is done")
     , GO_HOME_WHEN_DONE(false)
     , NOTIFICATION_STATUS_UPDATE("Status Update", true, false, std::chrono::seconds(3600))
     , NOTIFICATIONS({
@@ -268,29 +259,43 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         &NOTIFICATION_ERROR_FATAL,
     })
 {
-    CHAPTER.PA_ADD_OPTION(MACRO_FOLDER);
-    CHAPTER.PA_ADD_OPTION(START_POINT);
-    CHAPTER.PA_ADD_OPTION(RESTART_GAME);
-    CHARACTER_GROUP.PA_ADD_OPTION(CHARACTER);
-    CHARACTER_GROUP.PA_ADD_OPTION(CHARACTER_NAME);
-
+    PA_ADD_STATIC(SECTION_START);
     PA_ADD_OPTION(START_LOCATION);
+    PA_ADD_OPTION(START_MODE);
+    PA_ADD_STATIC(SECTION_CHAPTER);
+    PA_ADD_OPTION(MACRO_FOLDER);
+    PA_ADD_OPTION(START_POINT);
+    PA_ADD_STATIC(SECTION_GAME);
     PA_ADD_OPTION(PROFILE);
     PA_ADD_OPTION(GAME_LANGUAGE);
-    PA_ADD_OPTION(FULL_GAME);
-    PA_ADD_OPTION(CHAPTER);
-    PA_ADD_OPTION(CHARACTER_GROUP);
+    PA_ADD_STATIC(NEW_SAVE_NOTE);
+    PA_ADD_OPTION(CHARACTER);
+    PA_ADD_OPTION(CHARACTER_NAME);
     PA_ADD_OPTION(STARTER);
+    PA_ADD_STATIC(SECTION_BATTLE);
     PA_ADD_OPTION(BATTLE_AI);
+    PA_ADD_STATIC(SECTION_PROGRAM);
     PA_ADD_OPTION(GO_HOME_WHEN_DONE);
     PA_ADD_OPTION(NOTIFICATIONS);
 
-    FULL_GAME.add_listener(*this);
+    START_MODE.add_listener(*this);
+    START_POINT.add_listener(*this);
     AutoStoryMultiLang::on_config_value_changed(this);
 }
 void AutoStoryMultiLang::on_config_value_changed(void*){
-    //  Full Game: the chapter (macro folder + start step) is fixed.
-    CHAPTER.set_visibility(FULL_GAME ? ConfigOptionState::DISABLED : ConfigOptionState::ENABLED);
+    //  Grey out what the chosen start does not use.
+    const bool new_game = START_MODE.new_game();
+    const bool cont = START_MODE.continue_from_screen();
+    const StartPoint start = new_game ? StartPoint::CreateCharacter : START_POINT.get();
+    auto state = [](bool enabled){
+        return enabled ? ConfigOptionState::ENABLED : ConfigOptionState::DISABLED;
+    };
+    START_POINT.set_visibility(state(!new_game));
+    //  The profile is used whenever the game is (re)started.
+    PROFILE.set_visibility(state(!cont || start <= StartPoint::CreateCharacter));
+    CHARACTER.set_visibility(state(start <= StartPoint::SelectCharacter));
+    CHARACTER_NAME.set_visibility(state(start <= StartPoint::SelectCharacter));
+    STARTER.set_visibility(state(start <= StartPoint::ChooseStarter));
 }
 
 
@@ -442,7 +447,7 @@ void AutoStoryMultiLang::run_macro(
 
 
 std::string AutoStoryMultiLang::macro_file_path(const std::string& filename) const{
-    std::string path = FULL_GAME ? std::string() : std::string(MACRO_FOLDER);
+    std::string path = MACRO_FOLDER;
     if (path.empty()){
         path = RESOURCE_PATH() + MACRO_SUBFOLDER_DEFAULT;
     }else if (path.rfind("Resources/", 0) == 0 || path.rfind("Resources\\", 0) == 0){
@@ -3432,11 +3437,11 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
 
 
 //  The original fixed-order program was removed: Auto Story now runs from
-//  story_flow.json (AutoStoryBeta).
+//  story_flow.json (AutoStory).
 
 
 //
-//  Auto Story (Beta): the order of the steps comes from story_flow.json.
+//  Auto Story: the order of the steps comes from story_flow.json.
 //
 namespace{
 
@@ -3444,7 +3449,7 @@ const char* STORY_FLOW_FILE = "story_flow.json";
 
 //  Start From slugs, in the order of AutoStoryMultiLang::StartPoint. A step
 //  with "start": <slug> is where that choice starts.
-const char* BETA_START_SLUGS[] = {
+const char* START_SLUGS[] = {
     "create-character", "select-character", "train-station", "chase-pancham",
     "choose-starter", "first-battle", "battle-zone", "escape-zone",
     "waitress-battle", "escape-zone-2", "escape-zone-3", "walk-into-hotel",
@@ -3456,7 +3461,7 @@ const char* BETA_START_SLUGS[] = {
     "lab-mable", "research-menu",
 };
 static_assert(
-    sizeof(BETA_START_SLUGS) / sizeof(BETA_START_SLUGS[0]) ==
+    sizeof(START_SLUGS) / sizeof(START_SLUGS[0]) ==
     (size_t)AutoStoryMultiLang::StartPoint::ResearchMenu + 1,
     "One slug per start point."
 );
@@ -3527,16 +3532,16 @@ const char* DEFAULT_STORY_FLOW =
 }
 
 
-AutoStoryBeta_Descriptor::AutoStoryBeta_Descriptor()
+AutoStory_Descriptor::AutoStory_Descriptor()
     : AutoStoryMultiLang_Descriptor(
-        "PokemonLZA:AutoStoryBeta",
+        "PokemonLZA:AutoStory",
         "Auto Story",
         "Play the story from the start (or a chosen step). The order of the steps is read from story_flow.json "
         "in the macro folder. Each step runs a macro, clears a story dialog, or runs a built-in action."
     )
 {}
 
-AutoStoryBeta::AutoStoryBeta(){}
+AutoStory::AutoStory(){}
 
 
 //  Wait until the overworld HUD has been on screen for about a second (after
@@ -3562,7 +3567,7 @@ static bool wait_for_overworld_hud(
 }
 
 
-void AutoStoryBeta::run_flow_action(
+void AutoStory::run_flow_action(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
     const std::string& action, const std::string& id, const JsonObject& step
 ){
@@ -3727,7 +3732,7 @@ void AutoStoryBeta::run_flow_action(
 }
 
 
-void AutoStoryBeta::run_flow_step(
+void AutoStory::run_flow_step(
     SingleSwitchProgramEnvironment& env, ProControllerContext& context,
     const JsonObject& step, size_t index, size_t count
 ){
@@ -3820,7 +3825,7 @@ void AutoStoryBeta::run_flow_step(
 //  At Home: close the game, start it with the chosen profile, and press A
 //  (title screen, "PRESS A" in every language) until the save has loaded and
 //  the overworld HUD is up. A loaded save always lands on the overworld.
-void AutoStoryBeta::restart_and_load_save(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+void AutoStory::restart_and_load_save(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     env.log("Restarting the game with user profile " + std::to_string((int)PROFILE) + " and loading the save.");
     env.console.overlay().add_log("Restart game");
     close_game_from_home(env.console, context);
@@ -3860,10 +3865,10 @@ void AutoStoryBeta::restart_and_load_save(SingleSwitchProgramEnvironment& env, P
 }
 
 
-void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
+void AutoStory::program(SingleSwitchProgramEnvironment& env, ProControllerContext& context){
     assert_16_9_720p_min(env.logger(), env.console);
 
-    const StartPoint start = FULL_GAME ? StartPoint::CreateCharacter : START_POINT.get();
+    const StartPoint start = START_MODE.new_game() ? StartPoint::CreateCharacter : START_POINT.get();
 
     //  No party bar on the overworld until the starter is picked.
     m_hud_expected = start > StartPoint::ChooseStarter;
@@ -3918,7 +3923,7 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
     }
 
     //  Start From: the first step marked with its slug.
-    const std::string slug = BETA_START_SLUGS[(size_t)start];
+    const std::string slug = START_SLUGS[(size_t)start];
     size_t first = steps.size();
     for (size_t c = 0; c < steps.size(); c++){
         if (steps[c]->get_string_default("start") == slug){
@@ -3952,11 +3957,11 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
     default:
         break;
     }
-    const bool restart = !from_beginning && RESTART_GAME;
+    const bool restart = !from_beginning && START_MODE.load_save();
     if (restart && !overworld_start){
         throw UserSetupError(
             env.logger(),
-            "Restart the game first: \"" + std::string(START_POINT.current_display()) + "\" does not start on the overworld, "
+            "Load save at a step: \"" + std::string(START_POINT.current_display()) + "\" does not start on the overworld, "
             "so a loaded save cannot be there. Pick the step the save loads at (an earlier one)."
         );
     }

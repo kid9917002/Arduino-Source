@@ -1,16 +1,15 @@
-/*  Auto Story (Beta)
+/*  Auto Story
  *
  *  From: https://github.com/PokemonAutomation/
  *
- *  Same as Auto Story, but the order of the steps is read from
- *  story_flow.json in the macro folder. Each step runs a macro, clears a
- *  story dialog, or runs a built-in action. Without a usable file the
- *  built-in flow (the same order as Auto Story) is used.
+ *  The order of the steps is read from story_flow.json in the macro
+ *  folder. Each step runs a macro, clears a story dialog, or runs a
+ *  built-in action. Without a usable file the built-in flow is used.
  *
  */
 
-#ifndef PokemonAutomation_PokemonLZA_AutoStoryBeta_H
-#define PokemonAutomation_PokemonLZA_AutoStoryBeta_H
+#ifndef PokemonAutomation_PokemonLZA_AutoStory_H
+#define PokemonAutomation_PokemonLZA_AutoStory_H
 
 #include "PokemonLZA_AutoStoryMultiLang.h"
 
@@ -20,16 +19,16 @@ namespace NintendoSwitch{
 namespace PokemonLZA{
 
 
-class AutoStoryBeta_Descriptor : public AutoStoryMultiLang_Descriptor{
+class AutoStory_Descriptor : public AutoStoryMultiLang_Descriptor{
 public:
-    AutoStoryBeta_Descriptor();
+    AutoStory_Descriptor();
 };
 
 
-class AutoStoryBeta : public AutoStoryMultiLang{
+class AutoStory : public AutoStoryMultiLang{
 public:
-    using Descriptor = AutoStoryBeta_Descriptor;
-    AutoStoryBeta();
+    using Descriptor = AutoStory_Descriptor;
+    AutoStory();
 
     virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
 
