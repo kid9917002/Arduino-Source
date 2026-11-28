@@ -143,6 +143,10 @@ public:
 
     //  Game language. Order = the in-game LANGUAGE screen, left column top to
     //  bottom, then right column.
+    enum class ConsoleType{
+        Switch2,
+        Switch1,
+    };
     enum class GameLanguage{
         ChineseTraditional, //  繁體中文
         English,
@@ -310,6 +314,7 @@ protected:
     MacroFolderOption MACRO_FOLDER;
     EnumDropdownOption<StartPoint> START_POINT;
     SectionDividerOption SECTION_GAME;
+    EnumDropdownOption<ConsoleType> CONSOLE;
     SimpleIntegerOption<uint8_t> PROFILE;
     EnumDropdownOption<GameLanguage> GAME_LANGUAGE;
     StaticTextOption NEW_SAVE_NOTE;

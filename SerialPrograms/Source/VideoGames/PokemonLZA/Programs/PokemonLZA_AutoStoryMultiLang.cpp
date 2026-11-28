@@ -195,6 +195,17 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         StartPoint::CreateCharacter
     )
     , SECTION_GAME("<font size=4><b>Game Information</b></font>")
+    , CONSOLE(
+        "<b>Console:</b><br>"
+        "The macros are made on a Switch 2. On a Switch 1, a macro named \"<name>.ns1.json\" in the macro folder "
+        "is run in place of \"<name>.json\" when there is one (Switch 1 walks differently).",
+        {
+            {ConsoleType::Switch2, "switch2", "Switch 2"},
+            {ConsoleType::Switch1, "switch1", "Switch 1"},
+        },
+        LockMode::LOCK_WHILE_RUNNING,
+        ConsoleType::Switch2
+    )
     , PROFILE(
         "<b>User Profile Position:</b><br>"
         "The position, from left to right, of the Switch user profile to start the game with "
@@ -265,6 +276,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
     PA_ADD_OPTION(MACRO_FOLDER);
     PA_ADD_OPTION(START_POINT);
     PA_ADD_STATIC(SECTION_GAME);
+    PA_ADD_OPTION(CONSOLE);
     PA_ADD_OPTION(PROFILE);
     PA_ADD_OPTION(GAME_LANGUAGE);
     PA_ADD_STATIC(NEW_SAVE_NOTE);
@@ -323,7 +335,19 @@ void AutoStoryMultiLang::run_macro(
     std::string path = macro_file_path(filename);
 
     std::string text;
-    if (!file_to_string(path, text)){
+    bool loaded = false;
+    //  Switch 1: "<name>.ns1.json" takes the place of "<name>.json".
+    if (CONSOLE.get() == ConsoleType::Switch1 &&
+        filename.size() > 5 && filename.compare(filename.size() - 5, 5, ".json") == 0
+    ){
+        const std::string ns1_path = macro_file_path(filename.substr(0, filename.size() - 5) + ".ns1.json");
+        if (file_to_string(ns1_path, text)){
+            env.log("Switch 1 version of the macro: " + ns1_path, COLOR_BLUE);
+            path = ns1_path;
+            loaded = true;
+        }
+    }
+    if (!loaded && !file_to_string(path, text)){
         throw FileException(&env.logger(), PA_CURRENT_FUNCTION, "Unable to open macro file.", path);
     }
 
@@ -3642,7 +3666,8 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         "Auto Story",
         "Play the story from the start (or a chosen step). The order of the steps is read from story_flow.json "
         "in the macro folder. Each step runs a macro, clears a story dialog, or runs a built-in action. "
-        "Switch 2 only: the macro timings are made on a Switch 2."
+        "The macro timings are made on a Switch 2. For a Switch 1, set Console to Switch 1: "
+        "a macro saved as \"<name>.ns1.json\" is then run in place of \"<name>.json\"."
     )
 {}
 
