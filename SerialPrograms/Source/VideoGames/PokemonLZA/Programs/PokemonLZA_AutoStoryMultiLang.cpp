@@ -2604,8 +2604,9 @@ bool find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
         if (std::max(w, h) < 0.020 || std::min(w, h) < 0.002){
             continue;
         }
-        if (avg_g >= 185 && avg_r < 115){
-            continue;   //  cyan tab label / underline
+        if (avg_g >= 185 && avg_r < 115 && !(w >= 0.05 && h >= 0.04)){
+            continue;   //  cyan tab label / underline (small). The Switch 1
+                        //  frame is cyan too, but key-sized.
         }
         found = true;
         min_x = std::min(min_x, bx0);
@@ -2622,13 +2623,10 @@ bool find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
 }
 
 //  The Switch 1 system keyboard sits higher and wider than the Switch 2
-//  one (keys "1" at x 0.078 / y 0.504, rows 0.089 apart). Tell them apart by
-//  the gap under the top row: dark on Switch 1, a key on Switch 2.
-bool switch1_keyboard(const ImageViewRGB32& screen){
-    double key = image_stats(extract_box_reference(screen, ImageFloatBox(0.065, 0.495, 0.025, 0.018))).average.sum();
-    double gap = image_stats(extract_box_reference(screen, ImageFloatBox(0.065, 0.547, 0.025, 0.006))).average.sum();
-    double key2 = image_stats(extract_box_reference(screen, ImageFloatBox(0.140, 0.587, 0.025, 0.018))).average.sum();
-    return key > gap + 45 && key2 > gap + 45;
+//  one: its top row is at y 0.505 (Switch 2: 0.558). The cursor starts on
+//  the first key of the top row, so its height tells them apart.
+bool switch1_keyboard_cursor_y(double y){
+    return y > 0.48 && y < 0.535;
 }
 
 //  Candidate bar above the keys (Chinese keyboards).
@@ -2661,14 +2659,17 @@ void add_grid(
 }
 
 //  注音 (繁體中文).
-KeyboardLayout make_zhuyin_layout(){
+KeyboardLayout make_zhuyin_layout(bool switch1){
     KeyboardLayout layout;
     add_grid(layout, {
         {"ㄅ", "ㄉ", "ˇ", "ˋ", "ㄓ", "ˊ", "˙", "ㄚ", "ㄞ", "ㄢ", "ㄦ"},
         {"ㄆ", "ㄊ", "ㄍ", "ㄐ", "ㄔ", "ㄗ", "ㄧ", "ㄛ", "ㄟ", "ㄣ", "，"},
         {"ㄇ", "ㄋ", "ㄎ", "ㄑ", "ㄕ", "ㄘ", "ㄨ", "ㄜ", "ㄠ", "ㄤ", "。"},
         {"ㄈ", "ㄌ", "ㄏ", "ㄒ", "ㄖ", "ㄙ", "ㄩ", "ㄝ", "ㄡ", "ㄥ", "？"},
-    }, 0.1026, 0.0697, 0.5600, 0.0701);
+    },
+        switch1 ? 0.0781 : 0.1026, switch1 ? 0.0750 : 0.0697,
+        switch1 ? 0.5045 : 0.5600, switch1 ? 0.0889 : 0.0701
+    );
     return layout;
 }
 //  Letters (拼音 / English / French / German / Italian / Spanish).
@@ -2681,7 +2682,7 @@ KeyboardLayout make_latin_layout(bool switch1){
         {"z", "x", "c", "v", "b", "n", "m", ",", ".", "?", "!"},
     },
         switch1 ? 0.0781 : 0.1021, switch1 ? 0.0750 : 0.0698,
-        switch1 ? 0.5037 : 0.5583, switch1 ? 0.0887 : 0.0707
+        switch1 ? 0.5045 : 0.5583, switch1 ? 0.0889 : 0.0707
     );
     return layout;
 }
@@ -2695,14 +2696,14 @@ KeyboardLayout make_korean_layout(bool switch1){
         {"ㅋ", "ㅌ", "ㅊ", "ㅍ", "ㅠ", "ㅜ", "ㅡ", ",", ".", "?", "!"},
     },
         switch1 ? 0.0781 : 0.1021, switch1 ? 0.0750 : 0.0698,
-        switch1 ? 0.5037 : 0.5583, switch1 ? 0.0887 : 0.0707
+        switch1 ? 0.5045 : 0.5583, switch1 ? 0.0889 : 0.0707
     );
     return layout;
 }
 //  かな (日本語). Columns right to left like the 50-sound table. The same
 //  positions hold hiragana in あ mode and katakana in ア mode; the layout
 //  uses katakana.
-KeyboardLayout make_japanese_layout(){
+KeyboardLayout make_japanese_layout(bool switch1){
     KeyboardLayout layout;
     add_grid(layout, {
         {"「", "ワ", "ラ", "ヤ", "マ", "ハ", "ナ", "タ", "サ", "カ", "ア"},
@@ -2710,10 +2711,19 @@ KeyboardLayout make_japanese_layout(){
         {"ー", "ン", "ル", "ユ", "ム", "フ", "ヌ", "ツ", "ス", "ク", "ウ"},
         {"？", "、", "レ", "",   "メ", "ヘ", "ネ", "テ", "セ", "ケ", "エ"},
         {"！", "。", "ロ", "ヨ", "モ", "ホ", "ノ", "ト", "ソ", "コ", "オ"},
-    }, 0.1979, 0.0603, 0.5593, 0.0722);
-    layout.push_back({"MODE_HIRAGANA", 0.0917, 0.5593});
-    layout.push_back({"MODE_KATAKANA", 0.1380, 0.5593});
-    layout.push_back({"MODE_SMALL", 0.1146, 0.7759});
+    },
+        switch1 ? 0.1583 : 0.1979, switch1 ? 0.0674 : 0.0603,
+        switch1 ? 0.5051 : 0.5593, switch1 ? 0.0889 : 0.0722
+    );
+    if (switch1){
+        layout.push_back({"MODE_HIRAGANA", 0.0625, 0.5051});
+        layout.push_back({"MODE_KATAKANA", 0.1031, 0.5051});
+        layout.push_back({"MODE_SMALL", 0.0729, 0.7718});
+    }else{
+        layout.push_back({"MODE_HIRAGANA", 0.0917, 0.5593});
+        layout.push_back({"MODE_KATAKANA", 0.1380, 0.5593});
+        layout.push_back({"MODE_SMALL", 0.1146, 0.7759});
+    }
     return layout;
 }
 
@@ -3139,18 +3149,29 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
     }
     context.wait_for_all_requests();
     context.wait_for(500ms);    //  the keyboard slides in
-    const bool switch1 = switch1_keyboard(env.console.video().snapshot());
+    bool switch1 = false;
+    for (int c = 0; c < 10; c++){
+        context.wait_for_all_requests();
+        double x = 0;
+        double y = 0;
+        if (find_keyboard_cursor(env.console.video().snapshot(), x, y)){
+            switch1 = switch1_keyboard_cursor_y(y);
+            break;
+        }
+        context.wait_for(200ms);
+    }
     env.log(switch1 ? "Keyboard: Switch 1 layout." : "Keyboard: Switch 2 layout.");
-    if (switch1 && (keyboard == Keyboard::Zhuyin || keyboard == Keyboard::Pinyin || keyboard == Keyboard::Japanese)){
+    if (switch1 && (keyboard == Keyboard::Zhuyin || keyboard == Keyboard::Pinyin)){
+        //  The candidate list of the Switch 1 keyboard is not measured yet.
         throw UserSetupError(
             env.logger(),
-            "Character Name: the Switch 1 keyboard is supported for Latin and Korean names only so far. "
+            "Character Name: Chinese names on the Switch 1 keyboard are not supported yet. "
             "Enter the name by hand and start from the next step."
         );
     }
     const KeyboardLayout layout =
-        keyboard == Keyboard::Zhuyin   ? make_zhuyin_layout() :
-        keyboard == Keyboard::Japanese ? make_japanese_layout() :
+        keyboard == Keyboard::Zhuyin   ? make_zhuyin_layout(switch1) :
+        keyboard == Keyboard::Japanese ? make_japanese_layout(switch1) :
         keyboard == Keyboard::Korean   ? make_korean_layout(switch1) :
         make_latin_layout(switch1);
 
