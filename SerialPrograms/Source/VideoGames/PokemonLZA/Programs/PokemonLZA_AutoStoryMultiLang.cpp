@@ -3703,48 +3703,84 @@ void AutoStory::run_flow_action(
         pbf_press_button(context, BUTTON_A, 200ms, 0ms);
         context.wait_for_all_requests();
 
-        //  Wait for the opening video: after the confirmation the screen
-        //  fades to black, then the video plays (not black, no dialog).
-        //  Hold + once it has been playing for a moment.
+        //  Then, by the screen only (no fixed times, Switch 1 or 2):
+        //   1. black, then the opening video: hold + to skip it,
+        //   2. loading (black), the narration box at the station, a short
+        //      scene: press A,
+        //   3. the movement tutorial "?" icon: the player can walk. Done, the
+        //      ZA-01 macro takes over.
+        //  + is only pressed for the video: the narration box is a dark
+        //  screen too, + there would open nothing useful.
         {
             WallClock wait_start = current_time();
             WallClock playing_since = WallClock::max();
+            WallClock last_skip = WallClock::min();
+            WallClock last_a = WallClock::min();
             bool black_seen = false;
-            bool found = false;
-            while (current_time() - wait_start < std::chrono::seconds(40)){
+            bool video_done = false;
+            int skips = 0;
+            size_t a_presses = 0;
+            bool done = false;
+            while (current_time() - wait_start < std::chrono::minutes(3)){
                 context.wait_for(300ms);
                 context.wait_for_all_requests();
                 VideoSnapshot snapshot = env.console.video().snapshot();
+                if (movement_tutorial_icon(snapshot)){
+                    env.log(
+                        "Movement tutorial shown: at the station (" + std::to_string(skips) + " + holds, " +
+                        std::to_string(a_presses) + " A presses).", COLOR_BLUE
+                    );
+                    done = true;
+                    break;
+                }
                 const bool black = is_black(snapshot, 80, 40);
                 if (black){
+                    if (skips > 0){
+                        video_done = true;  //  the video is over: loading
+                    }
                     black_seen = true;
-                }
-                //  Without a fade (seen once in 20 s), take any steady
-                //  picture without a dialog.
-                const bool playing = !black && !dialog_on_screen(snapshot) &&
-                    (black_seen || current_time() - wait_start > std::chrono::seconds(20));
-                if (!playing){
                     playing_since = WallClock::max();
                     continue;
                 }
-                if (playing_since == WallClock::max()){
-                    playing_since = current_time();
+                if (!video_done){
+                    //  The video: not black and no dialog for 1.5 s after the
+                    //  fade (or after 20 s without one).
+                    const bool playing = !dialog_on_screen(snapshot) &&
+                        (black_seen || current_time() - wait_start > std::chrono::seconds(20));
+                    if (!playing){
+                        playing_since = WallClock::max();
+                        continue;
+                    }
+                    if (playing_since == WallClock::max()){
+                        playing_since = current_time();
+                    }
+                    if (current_time() - playing_since >= 1500ms && current_time() - last_skip >= 4000ms){
+                        if (skips >= 3){
+                            env.log("+ did not end the video. Going on with A.", COLOR_RED);
+                            video_done = true;
+                            continue;
+                        }
+                        skips++;
+                        env.log("Opening video playing. Holding + to skip it (" + std::to_string(skips) + ").");
+                        pbf_press_button(context, BUTTON_PLUS, 3000ms, 0ms);
+                        context.wait_for_all_requests();
+                        last_skip = current_time();
+                        playing_since = WallClock::max();
+                    }
+                    continue;
                 }
-                if (current_time() - playing_since >= 1500ms){
-                    found = true;
-                    break;
+                //  After the video: the narration box and the short scene.
+                //  A about once a second (some boxes are not recognized).
+                if (current_time() - last_a >= 1000ms){
+                    pbf_press_button(context, BUTTON_A, 100ms, 0ms);
+                    last_a = current_time();
+                    a_presses++;
                 }
             }
-            if (found){
-                env.log("Opening video playing (after " +
-                    std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(current_time() - wait_start).count()) +
-                    " ms). Holding + to skip it.", COLOR_BLUE);
-            }else{
-                env.log("No opening video seen in 40 seconds. Holding + anyway.", COLOR_RED);
+            if (!done){
+                env.log("No movement tutorial within 3 minutes after the name. Going on.", COLOR_RED);
             }
         }
-        pbf_press_button(context, BUTTON_PLUS, 5000ms, 3000ms);
-        pbf_press_button(context, BUTTON_A, 200ms, 200ms);
         context.wait_for_all_requests();
         return;
     }
