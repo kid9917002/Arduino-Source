@@ -383,19 +383,32 @@ double mean_brightness(const ImageViewRGB32& screen, const ImageFloatBox& box){
 }
 
 //  Mystery Gift menu: Get via Internet / Get with Code/Password / Check.
-//  The selected row is white from x = 0.206 to 0.794. Returns its index,
-//  or -1 when the menu is not on screen.
+//  The selected row is white from x = 0.206 to 0.794, the other two are
+//  dark. Returns the selected index, or -1 when the menu is not on screen.
+//  The other rows must be dark too: a white card while receiving a gift
+//  (2026-11-27 23:10, after the Diancie gift) looked like a selected row.
 int mystery_gift_menu_row(const ImageViewRGB32& screen){
     const double ROW_Y[3] = {0.370, 0.500, 0.630};
+    //  Right part of the rows only: the left end has the green arrow and
+    //  the icon, and the text length depends on the language.
+    double left[3];
+    double right[3];
     for (int c = 0; c < 3; c++){
         double y = ROW_Y[c];
-        //  Right part of the row only: the left end has the green arrow and
-        //  the icon, and the text length depends on the language.
-        if (white_ratio(screen, ImageFloatBox(0.745, y - 0.025, 0.020, 0.050)) >= 0.80 &&
-            white_ratio(screen, ImageFloatBox(0.772, y - 0.025, 0.015, 0.050)) >= 0.80
-        ){
-            return c;
+        left[c] = white_ratio(screen, ImageFloatBox(0.745, y - 0.025, 0.020, 0.050));
+        right[c] = white_ratio(screen, ImageFloatBox(0.772, y - 0.025, 0.015, 0.050));
+    }
+    for (int c = 0; c < 3; c++){
+        if (left[c] < 0.80 || right[c] < 0.80){
+            continue;
         }
+        bool others_dark = true;
+        for (int i = 0; i < 3; i++){
+            if (i != c && (left[i] > 0.10 || right[i] > 0.10)){
+                others_dark = false;
+            }
+        }
+        return others_dark ? c : -1;
     }
     return -1;
 }
@@ -562,11 +575,16 @@ void ClaimMysteryGift::pick_menu_option(SingleSwitchProgramEnvironment& env, Pro
         context.wait_for_all_requests();
         int row = mystery_gift_menu_row(env.console.video().snapshot());
         if (row < 0){
-            OperationFailedExceptionWithScreenshot::fire(
-                ErrorReportMode::NO_ERROR_REPORT,
-                "Not on the Mystery Gift menu.",
-                env.console
-            );
+            //  The cursor may still be moving, or a message is closing.
+            env.log("Mystery Gift menu not seen. Waiting for it.", COLOR_ORANGE);
+            if (!wait_for_mystery_gift_menu(env, context, 5000ms)){
+                OperationFailedExceptionWithScreenshot::fire(
+                    ErrorReportMode::NO_ERROR_REPORT,
+                    "Not on the Mystery Gift menu.",
+                    env.console
+                );
+            }
+            row = mystery_gift_menu_row(env.console.video().snapshot());
         }
         if (row == option){
             break;
