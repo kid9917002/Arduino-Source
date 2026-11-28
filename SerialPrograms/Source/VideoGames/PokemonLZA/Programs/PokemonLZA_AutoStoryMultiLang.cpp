@@ -2630,11 +2630,16 @@ bool switch1_keyboard_cursor_y(double y){
 }
 
 //  Candidate bar above the keys (Chinese keyboards).
-const double CAND_Y = 0.4676;
-const double CAND_X0 = 0.1312;
-const double CAND_PITCH = 0.04055;
-const int CAND_COUNT = 19;
-const double CAND_BAR_LIMIT_Y = 0.51;   //  cursor above this = candidate bar
+//  Switch 2 / Switch 1.
+struct CandidateBar{
+    double y;
+    double x0;
+    double pitch;
+    int count;
+    double limit_y;     //  cursor above this = candidate bar
+};
+const CandidateBar CAND_SWITCH2{0.4676, 0.1312, 0.04055, 19, 0.51};
+const CandidateBar CAND_SWITCH1{0.4160, 0.1260, 0.0500, 15, 0.46};
 
 struct KeyboardKey{
     std::string label;
@@ -3161,19 +3166,12 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
         context.wait_for(200ms);
     }
     env.log(switch1 ? "Keyboard: Switch 1 layout." : "Keyboard: Switch 2 layout.");
-    if (switch1 && (keyboard == Keyboard::Zhuyin || keyboard == Keyboard::Pinyin)){
-        //  The candidate list of the Switch 1 keyboard is not measured yet.
-        throw UserSetupError(
-            env.logger(),
-            "Character Name: Chinese names on the Switch 1 keyboard are not supported yet. "
-            "Enter the name by hand and start from the next step."
-        );
-    }
     const KeyboardLayout layout =
         keyboard == Keyboard::Zhuyin   ? make_zhuyin_layout(switch1) :
         keyboard == Keyboard::Japanese ? make_japanese_layout(switch1) :
         keyboard == Keyboard::Korean   ? make_korean_layout(switch1) :
         make_latin_layout(switch1);
+    const CandidateBar& cand = switch1 ? CAND_SWITCH1 : CAND_SWITCH2;
 
     auto fail = [&](const std::string& message){
         OperationFailedExceptionWithScreenshot::fire(
@@ -3227,9 +3225,9 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
             double x = 0;
             double y = 0;
             if (find_keyboard_cursor(env.console.video().snapshot(), x, y)){
-                if (y < CAND_BAR_LIMIT_Y){
+                if (y < cand.limit_y){
                     key = nullptr;
-                    bar_index = (int)std::lround((x - CAND_X0) / CAND_PITCH);
+                    bar_index = (int)std::lround((x - cand.x0) / cand.pitch);
                 }else{
                     key = nearest_key(layout, x, y);
                     bar_index = -1;
@@ -3301,8 +3299,8 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
         VideoSnapshot snapshot = env.console.video().snapshot();
         std::string all;
         int found = -1;
-        for (int i = 0; i < CAND_COUNT; i++){
-            ImageFloatBox box(CAND_X0 + CAND_PITCH * i - CAND_PITCH / 2, CAND_Y - 0.028, CAND_PITCH, 0.056);
+        for (int i = 0; i < cand.count; i++){
+            ImageFloatBox box(cand.x0 + cand.pitch * i - cand.pitch / 2, cand.y - 0.028, cand.pitch, 0.056);
             std::string text = trim_spaces(OCR::ocr_read(candidate_language, extract_box_reference(snapshot, box)));
             all += text.empty() ? std::string("_") : text;
             all += " ";
@@ -3366,7 +3364,7 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
             context.wait_for_all_requests();
             context.wait_for(300ms);
             VideoSnapshot snapshot = env.console.video().snapshot();
-            ImageFloatBox box(CAND_X0 - CAND_PITCH / 2, CAND_Y - 0.028, CAND_PITCH * 3, 0.056);
+            ImageFloatBox box(cand.x0 - cand.pitch / 2, cand.y - 0.028, cand.pitch * 3, 0.056);
             return trim_spaces(OCR::ocr_read(candidate_language, extract_box_reference(snapshot, box)));
         };
         for (int c = 0; c < 6; c++){
@@ -3382,7 +3380,7 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
             pbf_press_button(context, BUTTON_R, 80ms, 320ms);
             if (read_first() == before){
                 //  R did nothing: walk right past the end of the list.
-                for (int c = 0; c < CAND_COUNT + 1; c++){
+                for (int c = 0; c < cand.count + 1; c++){
                     pbf_press_dpad(context, DPAD_RIGHT, 80ms, 170ms);
                 }
                 if (read_first() == before){
