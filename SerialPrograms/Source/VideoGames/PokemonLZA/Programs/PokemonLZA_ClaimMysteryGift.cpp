@@ -476,10 +476,38 @@ bool quit_receiving_yes_selected(const ImageViewRGB32& screen){
             return g >= 180 && r >= 120 && b <= 110 && g - b >= 90;
         }) >= 0.20;
 }
+//  The red dot at the right end of a row marks a gift not received yet.
+//  Received gifts stay on the list (after the game is restarted) without
+//  the dot, greyed out; A on one only says it was received already
+//  (user's screenshots 2026-11-28 12:01). Dot: x = 0.699 to 0.705, from
+//  the row top + 0.006 to + 0.016. User's screenshots: 0.2 or more with
+//  it, 0 without.
+bool gift_row_unclaimed(const ImageViewRGB32& screen, int row){
+    double top = gift_row_top(row);
+    return pixel_ratio(screen, ImageFloatBox(0.696, top + 0.003, 0.012, 0.016), [](int r, int g, int b){
+        return r >= 180 && g <= 110 && b <= 130 && r - g >= 90;
+    }) >= 0.08;
+}
 bool gift_row_filled(const ImageViewRGB32& screen, int row){
     double top = gift_row_top(row);
     ImageFloatBox box(0.300, top + 0.012, 0.350, 0.042);
     return white_ratio(screen, box) >= 0.55 || mean_brightness(screen, box) >= 70;
+}
+//  The row the cursor is on. A received (greyed out) row may not be white
+//  when selected, so the green arrow counts first (shown once the message
+//  box is closed).
+int gift_list_cursor_row(const ImageViewRGB32& screen){
+    for (int c = 0; c < GIFT_ROW_COUNT; c++){
+        if (gift_list_arrow(screen, c)){
+            return c;
+        }
+    }
+    return gift_list_selected_row(screen);
+}
+//  On the gift list: the cursor row, or the message box over the rows.
+bool gift_list_on_screen(const ImageViewRGB32& screen){
+    return gift_list_cursor_row(screen) >= 0 ||
+        (gift_list_message_open(screen) && gift_row_filled(screen, 0));
 }
 
 
@@ -628,7 +656,7 @@ void ClaimMysteryGift::pick_menu_option(SingleSwitchProgramEnvironment& env, Pro
         double x = 0;
         double y = 0;
         bool there = option == 0
-            ? gift_list_selected_row(snapshot) >= 0
+            ? gift_list_on_screen(snapshot)
             : lza_find_keyboard_cursor(snapshot, x, y);
         if (there){
             if (++seen >= 2){
@@ -669,7 +697,7 @@ void ClaimMysteryGift::finish_receiving(
         //  Internet: back on the list, or on the Mystery Gift menu when that
         //  was the last gift (the game says there is no gift and leaves).
         bool back = mystery_gift_menu_row(snapshot) >= 0 ||
-            (back_to_list && gift_list_selected_row(snapshot) >= 0);
+            (back_to_list && gift_list_on_screen(snapshot));
         if (back){
             if (++seen >= 2){
                 env.log("Received: " + what, COLOR_BLUE);
@@ -751,7 +779,7 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         for (int c = 0; c < 30; c++){
             context.wait_for_all_requests();
             VideoSnapshot snapshot = env.console.video().snapshot();
-            int row = gift_list_selected_row(snapshot);
+            int row = gift_list_cursor_row(snapshot);
             if (row >= 0 && gift_list_arrow(snapshot, row)){
                 return;
             }
@@ -778,7 +806,7 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         int last_row = -1;
         for (int c = 0; c < 20; c++){
             context.wait_for_all_requests();
-            int row = gift_list_selected_row(env.console.video().snapshot());
+            int row = gift_list_cursor_row(env.console.video().snapshot());
             if (row == target){
                 return;
             }
@@ -812,7 +840,9 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
     };
 
     //  Top to bottom. A claimed row leaves the list and the rows below move
-    //  up, so the same row is looked at again after a claim.
+    //  up (or, after a restart, stays greyed out without the red dot), so
+    //  the same row is looked at again after a claim. Rows without the red
+    //  dot were received already and are skipped.
     int claimed = 0;
     int row = 0;
     for (int guard = 0; guard < 4 * GIFT_ROW_COUNT; guard++){
@@ -822,6 +852,12 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         }
         if (row >= count_rows()){
             break;
+        }
+        context.wait_for_all_requests();
+        if (!gift_row_unclaimed(env.console.video().snapshot(), row)){
+            env.log("List row " + std::to_string(row + 1) + ": received already (no red dot). Skipping.");
+            row++;
+            continue;
         }
         move_to_row(row);
         context.wait_for_all_requests();
