@@ -3884,7 +3884,28 @@ void AutoStoryBeta::program(SingleSwitchProgramEnvironment& env, ProControllerCo
             resume_game_from_home(env.console, context);
             //  The game takes a moment to come back from HOME: button
             //  presses before that are lost and the first macro walks short.
-            if (wait_for_overworld_hud(env, context, std::chrono::seconds(15))){
+            //  Only points that start on the overworld with the party bar
+            //  have a HUD to wait for. The others (before the starter, or on
+            //  a dialog / pre-battle / tutorial / LOOKS screen) get a fixed wait.
+            bool overworld_start = start > StartPoint::ChooseStarter;
+            switch (start){
+            case StartPoint::FirstBattle:
+            case StartPoint::BattleZone:
+            case StartPoint::WaitressBattle:
+            case StartPoint::EscapeBattleZone2:
+            case StartPoint::RivalBattle:
+            case StartPoint::MapTutorial:
+            case StartPoint::BunnelbyCapture:
+            case StartPoint::AfterBunnelby:
+                overworld_start = false;
+                break;
+            default:
+                break;
+            }
+            if (!overworld_start){
+                env.log("Back in the game. Waiting 3 seconds (this start point has no HUD).");
+                context.wait_for(3000ms);
+            }else if (wait_for_overworld_hud(env, context, std::chrono::seconds(15))){
                 env.log("Back in the game (HUD seen).", COLOR_BLUE);
             }else{
                 env.log("Back in the game? No HUD seen in 15 seconds. Starting anyway.", COLOR_RED);
