@@ -1131,11 +1131,16 @@ void ClaimMysteryGift::claim_via_code(
         int list_seen = 0;
         bool ok = false;
         bool rejected = false;
+        //  No A for 3 s after the menu was seen: an A on the menu opens
+        //  the code keyboard again, which then reads as "not accepted"
+        //  (2026-11-28 14:14: the gift was received, then reported so).
+        WallClock last_menu = start - std::chrono::seconds(10);
         while (current_time() - start < std::chrono::seconds(180)){
             context.wait_for_all_requests();
             VideoSnapshot snapshot = env.console.video().snapshot();
             if (mystery_gift_menu_row(snapshot) >= 0){
                 keyboard_seen = 0;
+                last_menu = current_time();
                 if (++menu_seen >= 2){
                     ok = true;
                     break;
@@ -1144,6 +1149,10 @@ void ClaimMysteryGift::claim_via_code(
                 continue;
             }
             menu_seen = 0;
+            if (current_time() - last_menu < std::chrono::seconds(3)){
+                context.wait_for(200ms);
+                continue;
+            }
             if (quit_receiving_yes_selected(snapshot)){
                 env.log("Code gift list: stop receiving? -> Yes (A).");
                 pbf_press_button(context, BUTTON_A, 100ms, 600ms);
@@ -1169,7 +1178,9 @@ void ClaimMysteryGift::claim_via_code(
                 }
                 if (cursor >= 0 && cursor == unclaimed){
                     env.log("Code gift list: receiving row " + std::to_string(cursor + 1) + ".", COLOR_BLUE);
-                    pbf_press_button(context, BUTTON_A, 100ms, 600ms);
+                    //  The row stays up a moment after A: wait, or the next
+                    //  look presses A on it again (2026-11-28 14:14).
+                    pbf_press_button(context, BUTTON_A, 100ms, 2000ms);
                     list_seen = 0;
                     continue;
                 }
