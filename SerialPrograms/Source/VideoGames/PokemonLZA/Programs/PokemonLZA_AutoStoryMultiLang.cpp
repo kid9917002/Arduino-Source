@@ -137,12 +137,12 @@ AutoStoryMultiLang::~AutoStoryMultiLang(){
     START_MODE.remove_listener(*this);
 }
 AutoStoryMultiLang::AutoStoryMultiLang()
-    : SECTION_START("<font size=4><b>Start</b></font> — how the run starts")
+    : SECTION_START("<font size=4><b>Start</b></font>")
     , START_MODE(
         "<b>Start Mode:</b>",
         StartModeOption::CONTINUE
     )
-    , SECTION_CHAPTER("<font size=4><b>Chapter</b></font> — which macros, from which step")
+    , SECTION_CHAPTER("<font size=4><b>Chapter</b></font>")
     , MACRO_FOLDER(
         false,
         "<b>Macro Folder:</b><br>"
@@ -194,7 +194,7 @@ AutoStoryMultiLang::AutoStoryMultiLang()
         LockMode::LOCK_WHILE_RUNNING,
         StartPoint::CreateCharacter
     )
-    , SECTION_GAME("<font size=4><b>Game Information</b></font> — user profile, language, character")
+    , SECTION_GAME("<font size=4><b>Game Information</b></font>")
     , PROFILE(
         "<b>User Profile Position:</b><br>"
         "The position, from left to right, of the Switch user profile to start the game with "
