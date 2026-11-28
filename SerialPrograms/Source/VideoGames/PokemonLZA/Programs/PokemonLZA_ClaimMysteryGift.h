@@ -21,7 +21,6 @@
 #include "CommonFramework/Notifications/EventNotificationsTable.h"
 #include "CommonTools/Options/LanguageOCROption.h"
 #include "CommonTools/OCR/OCR_SmallDictionaryMatcher.h"
-#include "NintendoSwitch/Options/NintendoSwitch_StartInGripMenuOption.h"
 #include "NintendoSwitch/NintendoSwitch_SingleSwitchProgram.h"
 
 namespace PokemonAutomation{
@@ -90,7 +89,6 @@ private:
     //  Reads the titles above (slug = gift id). Null if there are none.
     std::unique_ptr<OCR::SmallDictionaryMatcher> m_title_reader;
 
-    StartInGripOrGameOption START_LOCATION;
     //  Switch user profile to start the game with (position from the left,
     //  0: the console's default). Same as Auto Story.
     SimpleIntegerOption<uint8_t> PROFILE;

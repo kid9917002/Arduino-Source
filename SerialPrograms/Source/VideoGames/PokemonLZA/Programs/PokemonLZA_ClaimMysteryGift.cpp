@@ -285,7 +285,6 @@ ClaimMysteryGift::ClaimMysteryGift()
     }
     GIFTS.add_option(OTHER_GIFTS, "other");
 
-    PA_ADD_OPTION(START_LOCATION);
     PA_ADD_OPTION(PROFILE);
     CODE_GROUP.add_option(CODE, "code");
 
@@ -1238,13 +1237,10 @@ void ClaimMysteryGift::program(SingleSwitchProgramEnvironment& env, ProControlle
         codes = read_codes(env);
     }
 
-    //  Connect the controller, then Home -> close the game -> start it with
-    //  the chosen profile (same as Auto Story).
-    if (START_LOCATION.start_in_grip_menu()){
-        grip_menu_connect_go_home(context);
-    }else{
-        go_home(env.console, context);
-    }
+    //  Always from the Change Grip/Order menu (user, 2026-11-28): connect
+    //  the controller, then Home -> close the game -> start it with the
+    //  chosen profile (same as Auto Story).
+    grip_menu_connect_go_home(context);
     env.log("Starting the game with user profile " + std::to_string((int)PROFILE) + ".", COLOR_BLUE);
     env.console.overlay().add_log("Start game: profile " + std::to_string((int)PROFILE));
     close_game_from_home(env.console, context);
