@@ -511,6 +511,15 @@ bool gift_list_on_screen(const ImageViewRGB32& screen){
     if (mystery_gift_menu_row(screen) >= 0){
         return false;
     }
+    //  Not a result card ("... received!"): its white title bar starts at
+    //  x = 0.252, left of the list rows (0.292), at y 0.12 to 0.33 (it is
+    //  taller for some gifts). Its navy body passed the check below
+    //  (2026-11-28 19:55, Spanish Vivillon card: "The gift list did not
+    //  come back."). User's screenshots: 0.30 or more on result cards, 0.00
+    //  on gift lists.
+    if (white_ratio(screen, ImageFloatBox(0.255, 0.10, 0.012, 0.24)) >= 0.20){
+        return false;
+    }
     //  The result card ("... received!") has a white title bar where the
     //  first row is, but it starts further left (x = 0.252).
     return gift_list_cursor_row(screen) >= 0 ||
