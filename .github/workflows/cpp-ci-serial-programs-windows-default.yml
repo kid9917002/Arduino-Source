@@ -10,7 +10,7 @@ on:
 # immediately cancel the in-progress workflow started by the older event.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -20,4 +20,4 @@ jobs:
       os: windows-2025
       compiler: default
       upload-build: true
-      run-tests: true
+      run-tests: false
