@@ -740,8 +740,17 @@ void ClaimMysteryGift::finish_receiving(
     //  list (Internet) or the Mystery Gift menu (code) is back. Blind A
     //  every 0.7 s (as Auto Story's clear_dialogs), the screen checked
     //  right before each press.
+    //
+    //  The list stays up a moment after A: it only counts as "back" once
+    //  something else was on screen in between (2026-11-28 18:44: the list
+    //  was taken as back 1.4 s after A, the rows were then read during the
+    //  gift animation, had no red dot and were all skipped). No A for 3 s
+    //  after the list or menu was seen: A there would receive the next gift
+    //  or open Get via Internet again.
     context.wait_for(700ms);
     WallClock start = current_time();
+    WallClock last_back = start - std::chrono::seconds(10);
+    bool left = false;
     int seen = 0;
     while (current_time() - start < std::chrono::seconds(180)){
         context.wait_for_all_requests();
@@ -751,6 +760,11 @@ void ClaimMysteryGift::finish_receiving(
         bool back = mystery_gift_menu_row(snapshot) >= 0 ||
             (back_to_list && gift_list_on_screen(snapshot));
         if (back){
+            last_back = current_time();
+            if (!left && current_time() - start < std::chrono::seconds(8)){
+                context.wait_for(200ms);
+                continue;
+            }
             if (++seen >= 2){
                 env.log("Received: " + what, COLOR_BLUE);
                 return;
@@ -758,7 +772,12 @@ void ClaimMysteryGift::finish_receiving(
             context.wait_for(700ms);
             continue;
         }
+        left = true;
         seen = 0;
+        if (current_time() - last_back < std::chrono::seconds(3)){
+            context.wait_for(200ms);
+            continue;
+        }
         pbf_press_button(context, BUTTON_A, 100ms, 600ms);
     }
     OperationFailedExceptionWithScreenshot::fire(
@@ -898,6 +917,27 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
     int claimed = 0;
     int row = 0;
     for (int guard = 0; guard < 4 * GIFT_ROW_COUNT; guard++){
+        //  Look only at the list itself (or the menu), not at a passing
+        //  animation frame: there no row has a red dot and the row count
+        //  is wrong (2026-11-28 18:44).
+        {
+            WallClock wait_start = current_time();
+            while (true){
+                context.wait_for_all_requests();
+                VideoSnapshot snapshot = env.console.video().snapshot();
+                if (gift_list_on_screen(snapshot) || mystery_gift_menu_row(snapshot) >= 0){
+                    break;
+                }
+                if (current_time() - wait_start > std::chrono::seconds(10)){
+                    OperationFailedExceptionWithScreenshot::fire(
+                        ErrorReportMode::NO_ERROR_REPORT,
+                        "The gift list did not come back.",
+                        env.console
+                    );
+                }
+                context.wait_for(200ms);
+            }
+        }
         if (mystery_gift_menu_row(env.console.video().snapshot()) >= 0){
             env.log("Gift list: no gift left (back on the Mystery Gift menu).");
             break;
@@ -905,7 +945,6 @@ void ClaimMysteryGift::claim_via_internet(SingleSwitchProgramEnvironment& env, P
         if (row >= count_rows()){
             break;
         }
-        context.wait_for_all_requests();
         if (!gift_row_unclaimed(env.console.video().snapshot(), row)){
             env.log("List row " + std::to_string(row + 1) + ": received already (no red dot). Skipping.");
             row++;
