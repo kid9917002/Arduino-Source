@@ -137,9 +137,10 @@ AutoStoryMultiLang::~AutoStoryMultiLang(){
 }
 AutoStoryMultiLang::AutoStoryMultiLang()
     : FULL_GAME(
-        "<b>Full Game:</b><br>"
-        "Play the whole story from the beginning (ZA-00, starting from Home) with the macros in "
-        "Resources\\PokemonLZA\\AutoStory of the program folder. Uncheck to pick the macro folder and the chapter to start from.",
+        "<b>Start from New Game:</b><br>"
+        "Close the game, start it again with the user profile below and play the whole story from a new save (ZA-00), "
+        "with the macros in Resources\\PokemonLZA\\AutoStory of the program folder. The profile must have no save data. "
+        "Uncheck to pick the macro folder and the step to start from.",
         LockMode::LOCK_WHILE_RUNNING,
         false
     )
