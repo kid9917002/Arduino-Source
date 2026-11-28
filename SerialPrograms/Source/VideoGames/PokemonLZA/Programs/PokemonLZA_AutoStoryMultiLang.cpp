@@ -1997,6 +1997,9 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
 
     int lost = 0;
     int stuck = 0;
+    int best_distance = -1;
+    int no_progress = 0;
+    int detours = 0;
     int no_hud = 0;
     double stick_x = 0;
     double stick_y = 1;
@@ -2049,12 +2052,6 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
                 continue;
             }
 
-            if (stuck > 0){
-                //  Blocked: step sideways (alternating), then try again.
-                double side = (stuck % 2 == 1) ? -1.0 : 1.0;
-                env.log("Blocked. Stepping sideways (" + std::to_string(stuck) + ").", COLOR_RED);
-                pbf_move_left_joystick(context, {side, 0.3}, 500ms, 200ms);
-            }
             //  Far from the marker outdoors: run (B once while moving
             //  forward). Close to it, walk so the prompt is not overshot.
             const bool run = outdoors && state.distance >= 12;
@@ -2080,27 +2077,50 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
             stick_x = 0;
             stick_y = 1;
 
+            //  Progress: with a distance, it has to drop below the best so far
+            //  (it reads 12 / 13 back and forth while pushing into a fence:
+            //  that is not progress). Without one (indoors), the marker has
+            //  to move.
             State after = read_state();
-            if (after.world && !after.dialog && !after.prompt){
-                double after_cx = after.world_box.x + after.world_box.width / 2;
-                double after_cy = after.world_box.y + after.world_box.height / 2;
-                double before_cy = state.world_box.y + state.world_box.height / 2;
-                double size_change = std::abs(after.world_box.width - state.world_box.width) / state.world_box.width;
-                bool not_closer = (state.distance > 0 && after.distance > 0)
-                    ? after.distance >= state.distance
-                    : (std::abs(after_cx - cx) < 0.004 && std::abs(after_cy - before_cy) < 0.004 && size_change < 0.03);
-                if (not_closer){
-                    stuck++;
-                    if (stuck >= 12){
-                        OperationFailedExceptionWithScreenshot::fire(
-                            ErrorReportMode::NO_ERROR_REPORT,
-                            "walk_to_quest_marker(): Stuck on the way to " + name + ".",
-                            env.console
-                        );
+            if (after.world && after.hud){
+                bool progressed;
+                if (after.distance > 0){
+                    progressed = best_distance < 0 || after.distance < best_distance;
+                    if (progressed){
+                        best_distance = after.distance;
                     }
                 }else{
-                    stuck = 0;
+                    double after_cx = after.world_box.x + after.world_box.width / 2;
+                    double after_cy = after.world_box.y + after.world_box.height / 2;
+                    double before_cy = state.world_box.y + state.world_box.height / 2;
+                    double size_change = std::abs(after.world_box.width - state.world_box.width) / state.world_box.width;
+                    progressed = std::abs(after_cx - cx) >= 0.004 || std::abs(after_cy - before_cy) >= 0.004 || size_change >= 0.03;
                 }
+                no_progress = progressed ? 0 : no_progress + 1;
+                if (progressed){
+                    detours = 0;
+                }
+            }
+            if (no_progress >= 3){
+                //  Blocked (a fence, a wall): slide along it diagonally,
+                //  right first, then left, a little longer each time.
+                detours++;
+                if (detours > 6){
+                    OperationFailedExceptionWithScreenshot::fire(
+                        ErrorReportMode::NO_ERROR_REPORT,
+                        "walk_to_quest_marker(): Stuck on the way to " + name + ".",
+                        env.console
+                    );
+                }
+                const bool right = detours % 2 == 1;
+                const int64_t detour_ms = 1000 * detours;
+                env.log(
+                    "Blocked (" + std::to_string(no_progress) + " tries without getting closer). Going around to the " +
+                    (right ? "right" : "left") + " for " + std::to_string(detour_ms) + " ms (" + std::to_string(detours) + ").",
+                    COLOR_RED
+                );
+                pbf_move_left_joystick(context, {right ? 0.75 : -0.75, 0.65}, Milliseconds(detour_ms), 200ms);
+                no_progress = 0;
             }
             continue;
         }
