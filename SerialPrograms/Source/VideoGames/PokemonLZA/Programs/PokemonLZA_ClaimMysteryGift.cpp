@@ -955,6 +955,12 @@ void ClaimMysteryGift::claim_via_code(
             double y = 0;
             if (lza_find_keyboard_cursor(env.console.video().snapshot(), x, y)){
                 cursor_to_key(x, y, col, row);
+                char key = row < 4 && col < KEY_COLUMNS - 1 ? CODE_KEY_ROWS[row][col] : '-';
+                env.log(
+                    "Keyboard cursor: x = " + std::to_string(x) + ", y = " + std::to_string(y) +
+                    " -> column " + std::to_string(col) + ", row " + std::to_string(row) +
+                    " (" + std::string(1, key) + ")"
+                );
                 return;
             }
             context.wait_for(150ms);
