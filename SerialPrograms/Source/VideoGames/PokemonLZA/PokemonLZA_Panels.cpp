@@ -121,7 +121,6 @@ std::vector<PanelEntry> PanelListFactory::make_panels() const{
     }
 
     ret.emplace_back("---- Story Automation ----");
-    ret.emplace_back(make_SingleSwitchProgram<AutoStoryMultiLang>());
     ret.emplace_back(make_SingleSwitchProgram<AutoStoryBeta>());
     ret.emplace_back(make_SingleSwitchProgram<ClaimMysteryGift>());
 

@@ -89,7 +89,8 @@ public:
 
     virtual void on_config_value_changed(void* object) override;
 
-    virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override;
+    //  Only Auto Story (AutoStoryBeta, story_flow.json) runs this class.
+    virtual void program(SingleSwitchProgramEnvironment& env, ProControllerContext& context) override = 0;
 
 
 public:
