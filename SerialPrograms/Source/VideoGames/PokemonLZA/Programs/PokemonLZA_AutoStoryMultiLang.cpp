@@ -2008,8 +2008,10 @@ AutoStoryMultiLang::WalkResult AutoStoryMultiLang::walk_to_quest_marker(
         //  false hit: signs, shop fronts...). The story / a dialog hides it.
         if (!state.hud){
             //  The HUD goes away when a story scene starts (and some dialog
-            //  boxes have no fixed shape). Two reads in a row to be sure.
-            if (++no_hud >= 2){
+            //  boxes have no fixed shape). It also flickers for a moment
+            //  (area name, new mission banner, party bar opening), so it has
+            //  to stay away for about 1.5 seconds.
+            if (++no_hud >= 5){
                 env.log("HUD gone on the way to " + name + ". Story scene.");
                 return WalkResult::Dialog;
             }
@@ -3675,6 +3677,13 @@ void AutoStory::run_flow_action(
         //  keep walking. Default 20.
         const int story_within = (int)step.get_integer_default("story_within", 20);
         send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to " + marker + ".");
+        //  Right after a tutorial / story the screen is still settling (the
+        //  new mission and area name banners cover the HUD and the marker).
+        //  Wait for a steady HUD, then let the banners go away.
+        if (!wait_for_overworld_hud(env, context, std::chrono::seconds(15))){
+            env.log("No steady HUD before walking to " + marker + ". Walking anyway.", COLOR_RED);
+        }
+        context.wait_for(2500ms);
         for (int interruptions = 0; ; interruptions++){
             WalkResult result = walk_to_quest_marker(env, context, marker, outdoors);
             if (result == WalkResult::Prompt){
