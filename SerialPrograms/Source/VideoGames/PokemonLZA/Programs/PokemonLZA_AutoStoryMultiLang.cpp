@@ -3700,7 +3700,49 @@ void AutoStory::run_flow_action(
         //  skip the opening video.
         pbf_wait(context, 1000ms);
         pbf_press_dpad(context, DPAD_UP, 200ms, 200ms);
-        pbf_press_button(context, BUTTON_A, 200ms, 15000ms);
+        pbf_press_button(context, BUTTON_A, 200ms, 0ms);
+        context.wait_for_all_requests();
+
+        //  Wait for the opening video: after the confirmation the screen
+        //  fades to black, then the video plays (not black, no dialog).
+        //  Hold + once it has been playing for a moment.
+        {
+            WallClock wait_start = current_time();
+            WallClock playing_since = WallClock::max();
+            bool black_seen = false;
+            bool found = false;
+            while (current_time() - wait_start < std::chrono::seconds(40)){
+                context.wait_for(300ms);
+                context.wait_for_all_requests();
+                VideoSnapshot snapshot = env.console.video().snapshot();
+                const bool black = is_black(snapshot, 80, 40);
+                if (black){
+                    black_seen = true;
+                }
+                //  Without a fade (seen once in 20 s), take any steady
+                //  picture without a dialog.
+                const bool playing = !black && !dialog_on_screen(snapshot) &&
+                    (black_seen || current_time() - wait_start > std::chrono::seconds(20));
+                if (!playing){
+                    playing_since = WallClock::max();
+                    continue;
+                }
+                if (playing_since == WallClock::max()){
+                    playing_since = current_time();
+                }
+                if (current_time() - playing_since >= 1500ms){
+                    found = true;
+                    break;
+                }
+            }
+            if (found){
+                env.log("Opening video playing (after " +
+                    std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(current_time() - wait_start).count()) +
+                    " ms). Holding + to skip it.", COLOR_BLUE);
+            }else{
+                env.log("No opening video seen in 40 seconds. Holding + anyway.", COLOR_RED);
+            }
+        }
         pbf_press_button(context, BUTTON_PLUS, 5000ms, 3000ms);
         pbf_press_button(context, BUTTON_A, 200ms, 200ms);
         context.wait_for_all_requests();
