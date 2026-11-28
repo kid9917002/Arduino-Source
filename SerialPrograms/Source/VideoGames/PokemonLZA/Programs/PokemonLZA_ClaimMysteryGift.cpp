@@ -402,6 +402,16 @@ int mystery_gift_menu_row(const ImageViewRGB32& screen){
         if (left[c] < 0.80 || right[c] < 0.80){
             continue;
         }
+        double y = ROW_Y[c];
+        //  The row is white across (top margin, above the text) and ends at
+        //  x = 0.794. The "stop receiving?" Yes / No box on the gift list
+        //  (x = 0.735 to 0.895) sits where row 2 is: it is white past
+        //  0.794 and dark at x = 0.3 (2026-11-28 11:43).
+        if (white_ratio(screen, ImageFloatBox(0.300, y - 0.048, 0.400, 0.010)) < 0.80 ||
+            white_ratio(screen, ImageFloatBox(0.805, y - 0.025, 0.030, 0.050)) > 0.20
+        ){
+            continue;
+        }
         bool others_dark = true;
         for (int i = 0; i < 3; i++){
             if (i != c && (left[i] > 0.10 || right[i] > 0.10)){
