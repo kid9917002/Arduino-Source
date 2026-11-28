@@ -674,7 +674,8 @@ void ClaimMysteryGift::pick_menu_option(SingleSwitchProgramEnvironment& env, Pro
             continue;
         }
         seen = 0;
-        if (current_time() - last_press >= std::chrono::milliseconds(1500)){
+        //  Blind A every 0.7 s (as Auto Story's clear_dialogs).
+        if (current_time() - last_press >= std::chrono::milliseconds(700)){
             pbf_press_button(context, BUTTON_A, 100ms, 100ms);
             last_press = current_time();
         }
@@ -694,8 +695,10 @@ void ClaimMysteryGift::finish_receiving(
     bool back_to_list, const std::string& what
 ){
     //  Connection, gift animation, result card: A through them until the
-    //  list (Internet) or the Mystery Gift menu (code) is back.
-    context.wait_for(2000ms);
+    //  list (Internet) or the Mystery Gift menu (code) is back. Blind A
+    //  every 0.7 s (as Auto Story's clear_dialogs), the screen checked
+    //  right before each press.
+    context.wait_for(700ms);
     WallClock start = current_time();
     int seen = 0;
     while (current_time() - start < std::chrono::seconds(180)){
@@ -714,7 +717,7 @@ void ClaimMysteryGift::finish_receiving(
             continue;
         }
         seen = 0;
-        pbf_press_button(context, BUTTON_A, 100ms, 1400ms);
+        pbf_press_button(context, BUTTON_A, 100ms, 600ms);
     }
     OperationFailedExceptionWithScreenshot::fire(
         ErrorReportMode::NO_ERROR_REPORT,
@@ -1057,7 +1060,7 @@ void ClaimMysteryGift::claim_via_code(
                 continue;
             }
             keyboard_seen = 0;
-            pbf_press_button(context, BUTTON_A, 100ms, 1400ms);
+            pbf_press_button(context, BUTTON_A, 100ms, 600ms);
         }
         if (rejected){
             env.log("Code " + code + " was not accepted (wrong, used or expired). Leaving the keyboard.", COLOR_RED);
