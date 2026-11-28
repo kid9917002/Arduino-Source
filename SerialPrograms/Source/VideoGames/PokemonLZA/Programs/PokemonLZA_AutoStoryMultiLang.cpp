@@ -3633,7 +3633,8 @@ AutoStory_Descriptor::AutoStory_Descriptor()
         "PokemonLZA:AutoStory",
         "Auto Story",
         "Play the story from the start (or a chosen step). The order of the steps is read from story_flow.json "
-        "in the macro folder. Each step runs a macro, clears a story dialog, or runs a built-in action."
+        "in the macro folder. Each step runs a macro, clears a story dialog, or runs a built-in action. "
+        "Switch 2 only: the macro timings are made on a Switch 2."
     )
 {}
 
