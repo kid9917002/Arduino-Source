@@ -50,10 +50,9 @@ const char* GIFT_LIST_FILE = "PokemonLZA/MysteryGift/internet_gifts.json";
 //  titles: the gift's title on the Get via Internet list, per game language
 //  (OCR language codes: eng, jpn, chi_sim, chi_tra, kor, fra, deu, ita,
 //  spa), to find the checked gifts on the list. Several per language are
-//  fine. Checked on game screens (user's screenshot / game videos): all of
-//  chi_sim, chi_tra, eng, jpn, fra, kor, ita, spa (es-MX; es-ES all but
-//  the Vivillon); deu all but the Vivillon. Those two Vivillon titles are
-//  guesses from news text.
+//  fine. All checked on game screens (user's screenshots / game videos):
+//  all 9 languages, es-ES and es-MX (user's screenshots 2026-11-28 for deu
+//  and es-ES Vivillon).
 const char* DEFAULT_GIFT_LIST = R"JSON({
     "gifts": [
         { "id": "diancie", "name": "Diancite + Side Mission \"Shine Bright Like a Gemstone\"", "end_utc": "",
@@ -65,7 +64,7 @@ const char* DEFAULT_GIFT_LIST = R"JSON({
         { "id": "spewpa", "name": "Spewpa", "end_utc": "2026-11-19 01:59",
           "titles": {"eng": ["Spewpa Gift"], "jpn": ["\u30b3\u30d5\u30fc\u30e9\u30a4\u3000\u30d7\u30ec\u30bc\u30f3\u30c8"], "fra": ["P\u00e9r\u00e9grain (Spewpa)"], "spa": ["Regalo: Spewpa"], "kor": ["\ubd84\ub5a0\ub3c4\ub9ac \uc120\ubb3c"], "chi_sim": ["\u7c89\u8776\u86f9 \u793c\u7269", "\u7c89\u8776\u86f9\u793c\u7269"], "chi_tra": ["\u7c89\u8776\u86f9\u79ae\u7269", "\u7c89\u8776\u86f9 \u79ae\u7269"]} },
         { "id": "vivillon-poke-ball", "name": "Poke Ball Pattern Vivillon", "end_utc": "2027-02-26 01:59",
-          "titles": {"eng": ["Vivillon (Pok\u00e9 Ball Pattern) Gift"], "jpn": ["\u30dc\u30fc\u30eb\u306e\u3082\u3088\u3046\u306e\u3000\u30d3\u30d3\u30e8\u30f3"], "fra": ["Prismillon (Motif Pok\u00e9 Ball)"], "spa": ["Vivillon (Motivo Pok\u00e9bola)", "Vivillon (Motivo Pok\u00e9 Ball)"], "ita": ["Vivillon (Motivo Pok\u00e9 Ball)"], "deu": ["Vivillon (Pok\u00e9ball-Muster)", "Vivillon: Pok\u00e9ball-Muster"], "kor": ["\ube44\ube44\uc6a9(\ubcfc\uc758 \ubaa8\uc591) \uc120\ubb3c"], "chi_sim": ["\u7403\u7403\u82b1\u7eb9\u7684\u5f69\u7c89\u8776"], "chi_tra": ["\u7403\u7403\u82b1\u7d0b\u7684\u5f69\u7c89\u8776"]} }
+          "titles": {"eng": ["Vivillon (Pok\u00e9 Ball Pattern) Gift"], "jpn": ["\u30dc\u30fc\u30eb\u306e\u3082\u3088\u3046\u306e\u3000\u30d3\u30d3\u30e8\u30f3"], "fra": ["Prismillon (Motif Pok\u00e9 Ball)"], "spa": ["Vivillon (Motivo Pok\u00e9bola)", "Vivillon (Motivo Pok\u00e9 Ball)"], "ita": ["Vivillon (Motivo Pok\u00e9 Ball)"], "deu": ["Vivillon (Pok\u00e9ball-Muster)"], "kor": ["\ube44\ube44\uc6a9(\ubcfc\uc758 \ubaa8\uc591) \uc120\ubb3c"], "chi_sim": ["\u7403\u7403\u82b1\u7eb9\u7684\u5f69\u7c89\u8776"], "chi_tra": ["\u7403\u7403\u82b1\u7d0b\u7684\u5f69\u7c89\u8776"]} }
     ]
 })JSON";
 
