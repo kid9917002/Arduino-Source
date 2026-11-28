@@ -501,8 +501,15 @@ bool find_world_quest_marker(const ImageViewRGB32& screen, ImageFloatBox& box){
         if (std::sqrt(ox * ox + oy * oy) <= 0.062){
             continue;   //  minimap
         }
-        if (cx < 0.09 && cy < 0.13){
-            continue;   //  quest panel icon
+        //  The quest tracker under the minimap has a yellow "!" icon too
+        //  (about x = 0.05, y = 0.23), bigger than a far marker: it used to
+        //  win and the camera turned left for nothing. Same for the "new
+        //  mission" banner icon at the top left.
+        if (cx < 0.10 && cy < 0.30){
+            continue;
+        }
+        if (cx < 0.25 && cy < 0.12){
+            continue;
         }
         if (cy > 0.80){
             continue;   //  bottom HUD
