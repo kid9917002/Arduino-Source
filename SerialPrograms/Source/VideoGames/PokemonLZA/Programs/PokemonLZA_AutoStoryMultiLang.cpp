@@ -3490,7 +3490,7 @@ const char* DEFAULT_STORY_FLOW =
     R"JSON(        { "id": "ZA-10-1 PC scene", "story": { "before": 10, "after": 10, "quiet": 1200 }, "start": "pc" },)JSON" "\n"
     R"JSON(        { "id": "ZA-10-2 Walk to the PC", "macro": "ZA-10-2-走向PC.json" },)JSON" "\n"
     R"JSON(        { "id": "ZA-10-3 Pokedex tutorial", "story": { "before": 0, "after": 10, "quiet": 2000 } },)JSON" "\n"
-    R"JSON(        { "id": "ZA-11-1 Walk to Wild Zone 1", "macro": "ZA-11-1-走向WildZone1-1.json", "start": "wild-zone-1" },)JSON" "\n"
+    R"JSON(        { "id": "ZA-11-1 Walk to Wild Zone 1", "action": "walk_to_marker", "marker": "Wild Zone 1", "start": "wild-zone-1" },)JSON" "\n"
     R"JSON(        { "id": "ZA-11-2 Wild Zone 1", "story": { "before": 10, "after": 10, "quiet": 1200 } },)JSON" "\n"
     R"JSON(        { "id": "ZA-11-3 Into Wild Zone 1", "macro": "ZA-11-3-走向WildZone1-3.json" },)JSON" "\n"
     R"JSON(        { "id": "ZA-12-1 First catch", "macro": "ZA-12-1-捕捉教學1.json", "start": "first-catch" },)JSON" "\n"
@@ -3643,6 +3643,19 @@ void AutoStoryBeta::run_flow_action(
             pbf_move_left_joystick(context, {stick.first, stick.second}, 300ms, 300ms);
         }
         leave_wild_zone(env, context);
+        return;
+    }
+    if (action == "walk_to_marker"){
+        //  Walk to the quest marker (camera + minimap, runs when far), until
+        //  a dialog / story starts or an A prompt is up at the marker.
+        //  Step fields: "marker" (name for the log, default: the step id),
+        //  "outdoors" (default true: read the distance, run when far).
+        const std::string marker = step.get_string_default("marker", id.c_str());
+        const bool outdoors = step.get_boolean_default("outdoors", true);
+        send_program_status_notification(env, NOTIFICATION_STATUS_UPDATE, "Walking to " + marker + ".");
+        if (walk_to_quest_marker(env, context, marker, outdoors) == WalkResult::Prompt){
+            pbf_press_button(context, BUTTON_A, 100ms, 400ms);
+        }
         return;
     }
     if (action == "walk_to_lab"){
