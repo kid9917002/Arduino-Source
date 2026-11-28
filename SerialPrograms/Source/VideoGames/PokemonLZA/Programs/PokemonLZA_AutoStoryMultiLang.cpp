@@ -2621,6 +2621,16 @@ bool find_keyboard_cursor(const ImageViewRGB32& screen, double& x, double& y){
     return true;
 }
 
+//  The Switch 1 system keyboard sits higher and wider than the Switch 2
+//  one (keys "1" at x 0.078 / y 0.504, rows 0.089 apart). Tell them apart by
+//  the gap under the top row: dark on Switch 1, a key on Switch 2.
+bool switch1_keyboard(const ImageViewRGB32& screen){
+    double key = image_stats(extract_box_reference(screen, ImageFloatBox(0.065, 0.495, 0.025, 0.018))).average.sum();
+    double gap = image_stats(extract_box_reference(screen, ImageFloatBox(0.065, 0.547, 0.025, 0.006))).average.sum();
+    double key2 = image_stats(extract_box_reference(screen, ImageFloatBox(0.140, 0.587, 0.025, 0.018))).average.sum();
+    return key > gap + 45 && key2 > gap + 45;
+}
+
 //  Candidate bar above the keys (Chinese keyboards).
 const double CAND_Y = 0.4676;
 const double CAND_X0 = 0.1312;
@@ -2662,25 +2672,31 @@ KeyboardLayout make_zhuyin_layout(){
     return layout;
 }
 //  Letters (拼音 / English / French / German / Italian / Spanish).
-KeyboardLayout make_latin_layout(){
+KeyboardLayout make_latin_layout(bool switch1){
     KeyboardLayout layout;
     add_grid(layout, {
         {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-"},
         {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "/"},
         {"a", "s", "d", "f", "g", "h", "j", "k", "l", ":", "'"},
         {"z", "x", "c", "v", "b", "n", "m", ",", ".", "?", "!"},
-    }, 0.1021, 0.0698, 0.5583, 0.0707);
+    },
+        switch1 ? 0.0781 : 0.1021, switch1 ? 0.0750 : 0.0698,
+        switch1 ? 0.5037 : 0.5583, switch1 ? 0.0887 : 0.0707
+    );
     return layout;
 }
 //  한글.
-KeyboardLayout make_korean_layout(){
+KeyboardLayout make_korean_layout(bool switch1){
     KeyboardLayout layout;
     add_grid(layout, {
         {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-"},
         {"ㅂ", "ㅈ", "ㄷ", "ㄱ", "ㅅ", "ㅛ", "ㅕ", "ㅑ", "ㅐ", "ㅔ", "/"},
         {"ㅁ", "ㄴ", "ㅇ", "ㄹ", "ㅎ", "ㅗ", "ㅓ", "ㅏ", "ㅣ", ":", "'"},
         {"ㅋ", "ㅌ", "ㅊ", "ㅍ", "ㅠ", "ㅜ", "ㅡ", ",", ".", "?", "!"},
-    }, 0.1021, 0.0698, 0.5583, 0.0707);
+    },
+        switch1 ? 0.0781 : 0.1021, switch1 ? 0.0750 : 0.0698,
+        switch1 ? 0.5037 : 0.5583, switch1 ? 0.0887 : 0.0707
+    );
     return layout;
 }
 //  かな (日本語). Columns right to left like the 50-sound table. The same
@@ -3121,11 +3137,22 @@ void AutoStoryMultiLang::enter_character_name(SingleSwitchProgramEnvironment& en
     default:
         keyboard = Keyboard::Latin;
     }
+    context.wait_for_all_requests();
+    context.wait_for(500ms);    //  the keyboard slides in
+    const bool switch1 = switch1_keyboard(env.console.video().snapshot());
+    env.log(switch1 ? "Keyboard: Switch 1 layout." : "Keyboard: Switch 2 layout.");
+    if (switch1 && (keyboard == Keyboard::Zhuyin || keyboard == Keyboard::Pinyin || keyboard == Keyboard::Japanese)){
+        throw UserSetupError(
+            env.logger(),
+            "Character Name: the Switch 1 keyboard is supported for Latin and Korean names only so far. "
+            "Enter the name by hand and start from the next step."
+        );
+    }
     const KeyboardLayout layout =
         keyboard == Keyboard::Zhuyin   ? make_zhuyin_layout() :
         keyboard == Keyboard::Japanese ? make_japanese_layout() :
-        keyboard == Keyboard::Korean   ? make_korean_layout() :
-        make_latin_layout();
+        keyboard == Keyboard::Korean   ? make_korean_layout(switch1) :
+        make_latin_layout(switch1);
 
     auto fail = [&](const std::string& message){
         OperationFailedExceptionWithScreenshot::fire(
